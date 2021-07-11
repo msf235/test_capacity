@@ -114,81 +114,19 @@ def nmans_linsep_loop(nmans_range: Iterable[int], ambient_dim : int,
             fitter.fit(X, y)
             acc = fitter.score(X, y)
             if acc < 1.0:
-                print()
-                print('-----------------------')
-                print("At least one dichotomy is not linearly separable")
                 break
         if acc < 1.0:
             break
-    print("The number of manifolds that are linearly separable for all "
+    print()
+    print("The maximum number of manifolds that are linearly separable for all "
           f"dichotomies is {nmans-1}.")
     return nmans-1, fitter
 
 
 # %% Calculate the number of manifolds that can are linearly separable for all
 # possible dichotomies.
-# mods = (5, 4)
-# ambient_dim = 9
-# nmans_range = [2, 15] 
-# nmans_linsep_loop(nmans_range, ambient_dim, mods)
 
 mods = (5, 4)
-ambient_dim = 11
+ambient_dim = 9
 nmans_range = np.arange(2, 15)
-nsep_mans, fitter = nmans_linsep_loop(nmans_range, ambient_dim, mods)
-
-# %% 
-mods = (3, 2)
-ambient_dim = 5
-nmans = 4
-manifolds, labels = get_manifolds_and_labels(ambient_dim, mods, nmans)
-X = manifolds.reshape(-1, ambient_dim)
-Y = labels.reshape(2**nmans-2, -1)
-y = Y[5]
-fitter = svm.LinearSVC(tol=1e-14, max_iter=40000, C=10.)
-fitter.fit(X, y)
-acc = fitter.score(X, y)
-
-# %% 
-mods = (3, 2)
-ambient_dim = 5
-nmans = 6
-label_idx = 10
-manifolds, labels = get_manifolds_and_labels(ambient_dim, mods, nmans)
-mans_looped = np.concatenate([manifolds, manifolds[:, :1]], axis=1)
-fig = plt.figure()
-ax = plt.axes(projection='3d')
-col = plt.cm.jet([0.2,.8])
-for k in range(nmans):
-    ax.plot(mans_looped[k, :, 0], mans_looped[k, :, 1], mans_looped[k, :, 2],
-           color=col[int(labels[label_idx][k][0])])
-    # ax.scatter(manifolds[k, :, 0], manifolds[k, :, 1], manifolds[k, :, 2],
-              # c=labels[5][k])
-fig.show()
-fig, ax = plt.subplots()
-for k in range(nmans):
-    ax.plot(mans_looped[k, :, 3], mans_looped[k, :, 2],
-            color=col[int(labels[label_idx][k][0])])
-fig.show()
-
-X = manifolds.reshape(-1, ambient_dim)
-Y = labels.reshape(2**nmans-2, -1)
-y = Y[label_idx]
-fitter = svm.LinearSVC(tol=1e-14, max_iter=40000, C=10.)
-fitter.fit(X, y)
-acc = fitter.score(X, y)
-
-nmans_range = [4, 6]
-nsep_mans, fitter = nmans_linsep_loop(nmans_range, ambient_dim, mods)
-# %% 
-mods = (3,)
-ambient_dim = 3
-nmans = 2
-manifolds, labels = get_manifolds_and_labels(ambient_dim, mods, nmans)
-mans_looped = np.concatenate([manifolds, manifolds[:, :1]], axis=1)
-fig = plt.figure()
-ax = plt.axes(projection='3d')
-for k in range(nmans):
-    ax.plot(mans_looped[k, :, 0], mans_looped[k, :, 1], mans_looped[k, :, 2])
-fig.show()
-# pred_cap = 2**len(mods) - 1
+out = nmans_linsep_loop(nmans_range, ambient_dim, mods)
