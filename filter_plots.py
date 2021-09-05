@@ -35,8 +35,8 @@ C[1, 2] = a
 A = C @ Phi1real.T
 
 Ctilde = np.zeros((n,n))
-# bvec = np.random.randn(n-2)/2
-bvec = np.zeros(n-2)
+bvec = np.random.randn(n-2)
+# bvec = np.zeros(n-2)
 a = np.random.randn()
 Ctilde[0,0] = bvec[0]
 # Ctilde[0, 3:] = bvec[1:]
@@ -85,16 +85,20 @@ def B2tilde(g, n):
 LHS = Atilde @ rho1(1, n) @ x
 RHS = rho2tilde(1,n) @ Atilde @ x
 
-np.round(B2tilde(1,n) @ Atilde, 10)
-np.round(Atilde @ rho1(1,n))
+# np.round(B2tilde(1,n) @ Atilde, 10)
+# np.round(Atilde @ rho1(1,n))
 
 def rho2circ(g,n):
     return Phi1real @ B2tilde(g,n) @ Phi1real.T
 Acirc = Phi1real @ Ctilde @ Phi1real.T
 LHS = Acirc @ rho1(1, n) @ x
 RHS = rho2circ(1,n) @ Acirc @ x
+equiv_test = np.all(
+    [np.allclose(Acirc @ rho1(k, n) @ x, rho2circ(k,n) @ Acirc @ x) for k in range(n)])
 
+U, s , Vt = np.linalg.svd(Atilde)
 
+# %% 
 fig, ax = plt.subplots()
 ax.imshow(A)
 ax.axes.get_xaxis().set_visible(False)
