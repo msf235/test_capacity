@@ -43,8 +43,8 @@ class ShiftDataset(torch.utils.data.Dataset):
     def __init__(self, core_dataset):
         self.core_dataset = core_dataset
         self.sx, self.sy = self.core_dataset[0][0].shape[1:]
-        self.targets = torch.tile(torch.tensor(self.core_dataset.targets),
-                                  (self.sx*self.sy,))
+        # self.targets = torch.tile(torch.tensor(self.core_dataset.targets),
+                                  # (self.sx*self.sy,))
         # self.G = itertools.product((range(self.xs), range(sy))) # Lazy approach
 
     def __len__(self):
