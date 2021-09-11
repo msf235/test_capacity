@@ -118,11 +118,6 @@ class Perceptron(torch.nn.Module):
         return input @ self.readout_w
 
 for k1 in range(n_dichotomies):
-    # dataset = ShiftDataset(core_dataset)
-    # binary_sampler = torch.utils.data.sampler.SubsetRandomSampler(binary_indices)
-    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=124,
-                                             # num_workers=0,
-                                            # sampler=sub_sampler)
 
     perceptron = Perceptron(N)
 
