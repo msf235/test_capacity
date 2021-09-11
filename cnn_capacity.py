@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 n_dichotomies = 100
 n_inputs = 1000
 epochs = 5
-batch_size = 124
+batch_size = 224
 
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
 # image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -39,9 +39,10 @@ def get_shifted_img(img: torch.Tensor, gx: int, gy: int):
     img_ret = torch.roll(img_ret, (gx, gy), dims=(-2, -1))
     return img_ret
 
-class ShiftDataset(torch.utils.data.Dataset):
-    def __init__(self, core_dataset):
+class ShiftDataset2D(torch.utils.data.Dataset):
+    def __init__(self, core_dataset, core_indices=None):
         self.core_dataset = core_dataset
+        self.core_indices = core_indices
         self.sx, self.sy = self.core_dataset[0][0].shape[1:]
         # self.targets = torch.tile(torch.tensor(self.core_dataset.targets),
                                   # (self.sx*self.sy,))  # Too large for memory
@@ -56,8 +57,31 @@ class ShiftDataset(torch.utils.data.Dataset):
         # g = self.G[g_idx] # Lazy approach
         gx = g_idx // self.sy 
         gy = g_idx % self.sy
+        if self.core_indices is not None:
+            idx_core = self.core_indices[idx_core]
         img, label = self.core_dataset[idx_core]
         return get_shifted_img(img, gx, gy), label, idx_core
+
+class ShiftDataset1D(torch.utils.data.Dataset):
+    def __init__(self, core_dataset, core_indices=None):
+        self.core_dataset = core_dataset
+        self.core_indices = core_indices
+        self.sy = self.core_dataset[0][0].shape[-1]
+        # self.targets = torch.tile(torch.tensor(self.core_dataset.targets),
+                                  # (self.sy,))
+
+    def __len__(self):
+        return len(self.core_dataset)*self.sy
+
+    def __getitem__(self, idx):
+        g_idx = idx % self.sy
+        idx_core = idx // self.sy
+        # g = self.G[g_idx] # Lazy approach
+        gy = g_idx % self.sy
+        if self.core_indices is not None:
+            idx_core = self.core_indices[idx_core]
+        img, label = self.core_dataset[idx_core]
+        return get_shifted_img(img, 0, gy), label, idx_core
 
 class HingeLoss(torch.nn.Module):
     def __init__(self):
@@ -95,19 +119,32 @@ class RandomLabels:
                                             # persistent_workers=False,)
                                            # # sampler=binary_sampler)
 
-dataset = ShiftDataset(core_dataset)
-sub_sampler = torch.utils.data.sampler.SubsetRandomSampler( range(n_inputs))
+num_classes_core = len(core_dataset.targets)
+random_samples = torch.randperm(num_classes_core)[:n_inputs]
+dataset = ShiftDataset1D(core_dataset, core_indices=random_samples)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                         num_workers=0, sampler=sub_sampler)
-random_labels = RandomLabels(batch_size, 2)
+                                         num_workers=0)
 test_input, test_label, core_idx = next(iter(dataloader))
 # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
-# %% 
-loss_fn = HingeLoss()
+class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
 
 h_test = effnet.get_features(test_input)
 h0 = h_test[0]
 N = torch.prod(torch.tensor(h0.shape[1:]))
+
+# # %%  Test data sampling
+# cnt = 0
+# for input, label, core_idx in dataloader:
+    # cnt += 1
+    # random_labels = class_random_labels[core_idx]
+    # print(label)
+    # print(core_idx)
+    # print(random_labels)
+    # print(cnt)
+
+# %% 
+
+loss_fn = HingeLoss()
 
 class Perceptron(torch.nn.Module):
     def __init__(self, N):
@@ -117,12 +154,10 @@ class Perceptron(torch.nn.Module):
     def forward(self, input):
         return input @ self.readout_w
 
-class_random_labels = 2*(torch.rand(1000) < .5) - 1
 for k1 in range(n_dichotomies):
     perceptron = Perceptron(N)
     optimizer = torch.optim.Adam(perceptron.parameters(), lr=.0001)
     for epoch in range(epochs):
-        random_labels.reset()
         for input, label, core_idx in dataloader:
             random_labels = class_random_labels[core_idx]
             h = effnet.get_features(input)[0]
