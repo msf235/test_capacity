@@ -1,5 +1,5 @@
 import timm
-from models import gridcellconv
+import models
 import torch
 import torchvision
 import itertools
@@ -9,7 +9,11 @@ import torchvision.transforms as transforms
 n_dichotomies = 100
 n_inputs = 1000
 epochs = 5
-batch_size = 224
+batch_size = 128
+# net_style = 'conv'
+net_style = 'grid'
+dataset_name = 'imagenet'
+# dataset_name = 'random'
 
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
 # image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -104,12 +108,21 @@ class HingeLoss(torch.nn.Module):
         hinge_loss[hinge_loss < 0] = 0
         return hinge_loss.mean()
 
-
-effnet = timm.models.factory.create_model('efficientnet_b2', pretrained=True)
-effnet.eval()
-core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
-                                                transform=transform_test)
-# core_dataset = UniformNoiseImages((64,64), 100)
+if net_style == 'conv':
+    net = timm.models.factory.create_model('efficientnet_b2', pretrained=True)
+elif net_style == 'grid':
+    net = torch.nn.Sequential(
+        torch.nn.Conv2d(3, 10, 3),
+        models.MultiplePeriodicAggregate2D(((14, 14), (8, 8)))
+    )
+net.eval()
+if dataset_name.lower() == 'imagenet':
+    core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
+                                                    transform=transform_test)
+elif dataset_name.lower() == 'random':
+    core_dataset = UniformNoiseImages((64,64), batch_size)
+else:
+    raise AttributeError('dataset_name option not recognized')
 # core_dataset = timm.data.dataset_factory.create_dataset(
     # 'ImageFolder',
     # root='/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC',
@@ -130,10 +143,20 @@ test_input, test_label, core_idx = next(iter(dataloader))
 # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
 class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
 
-with torch.no_grad():
-    h_test = effnet.get_features(test_input)
-h0 = h_test[0]
-N = torch.prod(torch.tensor(h0.shape[1:]))
+if net_style == 'conv':
+    with torch.no_grad():
+        h_test = net.get_features(test_input)
+    h0 = h_test[0]
+    N = torch.prod(torch.tensor(h0.shape[1:]))
+elif net_style == 'grid':
+    with torch.no_grad():
+        h_test = net(test_input)
+    h_test = [h.reshape(*h.shape[:2], -1) for h in h_test]
+    h_test = torch.cat(h_test, dim=-1)
+    N = torch.prod(torch.tensor(h_test.shape[1:]))
+else:
+    raise AttributeError('net_style option not recognized')
+    # N = h_test.shape[-1]
 
 # # %%  Test data sampling
 # cnt = 0
@@ -163,8 +186,15 @@ for k1 in range(n_dichotomies):
     for epoch in range(epochs):
         for input, label, core_idx in dataloader:
             random_labels = class_random_labels[core_idx]
-            with torch.no_grad():
-                h = effnet.get_features(input)[0]
+            if net_style == 'conv':
+                with torch.no_grad():
+                    h = net.get_features(input)[0]
+                h = h.reshape(h.shape[0], -1)
+            elif net_style == 'grid':
+                with torch.no_grad():
+                    hlist = net(input)
+                hlist = [h.reshape(*h.shape[:2], -1) for h in hlist]
+                h = torch.cat(hlist, dim=-1)
             h = h.reshape(h.shape[0], -1)
             optimizer.zero_grad()
             out = perceptron(h)
