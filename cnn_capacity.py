@@ -20,13 +20,13 @@ transform_train = transforms.Compose([
     transforms.RandomResizedCrop(224),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-    # normalize,
+    normalize,
 ])
 transform_test = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
     transforms.ToTensor(),
-    # normalize,
+    normalize,
 ])
 def random_label(label):
     if torch.rand(1).item() < .5:
@@ -94,20 +94,9 @@ class HingeLoss(torch.nn.Module):
 
 
 effnet = timm.models.factory.create_model('efficientnet_b2', pretrained=True)
+effnet.eval()
 core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
-                                                transform=transform_train)
-class RandomLabels:
-    def __init__(self, batch_size, seed):
-        self.seed = seed
-        torch.manual_seed(self.seed)
-        self.batch_size = batch_size
-
-    def reset(self):
-        torch.manual_seed(self.seed)
-    
-    def get_random_labels(self):
-        return 2*(torch.rand(self.batch_size) < 0.5) - 1
-
+                                                transform=transform_test)
 # core_dataset = timm.data.dataset_factory.create_dataset(
     # 'ImageFolder',
     # root='/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC',
@@ -119,16 +108,17 @@ class RandomLabels:
                                             # persistent_workers=False,)
                                            # # sampler=binary_sampler)
 
-num_classes_core = len(core_dataset.targets)
-random_samples = torch.randperm(num_classes_core)[:n_inputs]
+num_samples_core = len(core_dataset)
+random_samples = torch.randperm(num_samples_core)[:n_inputs]
 dataset = ShiftDataset1D(core_dataset, core_indices=random_samples)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                         num_workers=0)
+                                         num_workers=2)
 test_input, test_label, core_idx = next(iter(dataloader))
 # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
 class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
 
-h_test = effnet.get_features(test_input)
+with torch.no_grad():
+    h_test = effnet.get_features(test_input)
 h0 = h_test[0]
 N = torch.prod(torch.tensor(h0.shape[1:]))
 
@@ -160,7 +150,8 @@ for k1 in range(n_dichotomies):
     for epoch in range(epochs):
         for input, label, core_idx in dataloader:
             random_labels = class_random_labels[core_idx]
-            h = effnet.get_features(input)[0]
+            with torch.no_grad():
+                h = effnet.get_features(input)[0]
             h = h.reshape(h.shape[0], -1)
             optimizer.zero_grad()
             out = perceptron(h)
