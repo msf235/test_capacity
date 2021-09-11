@@ -11,8 +11,8 @@ n_inputs = 1000
 epochs = 5
 batch_size = 124
 
-# image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
-image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
+image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
+# image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
 
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                          std=[0.229, 0.224, 0.225])
@@ -57,7 +57,7 @@ class ShiftDataset(torch.utils.data.Dataset):
         gx = g_idx // self.sy 
         gy = g_idx % self.sy
         img, label = self.core_dataset[idx_core]
-        return get_shifted_img(img, gx, gy), label
+        return get_shifted_img(img, gx, gy), label, idx_core
 
 class HingeLoss(torch.nn.Module):
     def __init__(self):
@@ -100,7 +100,7 @@ sub_sampler = torch.utils.data.sampler.SubsetRandomSampler( range(n_inputs))
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                          num_workers=0, sampler=sub_sampler)
 random_labels = RandomLabels(batch_size, 2)
-test_input, test_label = next(iter(dataloader))
+test_input, test_label, core_idx = next(iter(dataloader))
 # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
 # %% 
 loss_fn = HingeLoss()
@@ -117,21 +117,20 @@ class Perceptron(torch.nn.Module):
     def forward(self, input):
         return input @ self.readout_w
 
+class_random_labels = 2*(torch.rand(1000) < .5) - 1
 for k1 in range(n_dichotomies):
-
     perceptron = Perceptron(N)
-
     optimizer = torch.optim.Adam(perceptron.parameters(), lr=.0001)
     for epoch in range(epochs):
         random_labels.reset()
-        for input, label in dataloader:
-            random_label_batch = random_labels.get_random_labels()
+        for input, label, core_idx in dataloader:
+            random_labels = class_random_labels[core_idx]
             h = effnet.get_features(input)[0]
             h = h.reshape(h.shape[0], -1)
             optimizer.zero_grad()
             out = perceptron(h)
             # y = 2*label - 1
-            loss = loss_fn(out, random_label_batch)
+            loss = loss_fn(out, random_labels)
             loss.backward()
             optimizer.step()
             print(loss.item())
