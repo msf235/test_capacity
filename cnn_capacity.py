@@ -10,10 +10,10 @@ n_dichotomies = 100
 n_inputs = 1000
 epochs = 5
 batch_size = 128
-# net_style = 'conv'
-net_style = 'grid'
-dataset_name = 'imagenet'
-# dataset_name = 'random'
+net_style = 'conv'
+# net_style = 'grid'
+# dataset_name = 'imagenet'
+dataset_name = 'random'
 
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
 # image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -120,7 +120,7 @@ if dataset_name.lower() == 'imagenet':
     core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
                                                     transform=transform_test)
 elif dataset_name.lower() == 'random':
-    core_dataset = UniformNoiseImages((64,64), batch_size)
+    core_dataset = UniformNoiseImages((16,16), batch_size)
 else:
     raise AttributeError('dataset_name option not recognized')
 # core_dataset = timm.data.dataset_factory.create_dataset(
@@ -141,7 +141,6 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                          num_workers=2)
 test_input, test_label, core_idx = next(iter(dataloader))
 # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
-class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
 
 if net_style == 'conv':
     with torch.no_grad():
@@ -181,6 +180,7 @@ class Perceptron(torch.nn.Module):
         return input @ self.readout_w
 
 for k1 in range(n_dichotomies):
+    class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
     perceptron = Perceptron(N)
     optimizer = torch.optim.Adam(perceptron.parameters(), lr=.0001)
     for epoch in range(epochs):
