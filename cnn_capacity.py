@@ -28,16 +28,28 @@ transform_test = transforms.Compose([
     transforms.ToTensor(),
     normalize,
 ])
-def random_label(label):
-    if torch.rand(1).item() < .5:
-        return -1
-    else:
-        return 1
 
 def get_shifted_img(img: torch.Tensor, gx: int, gy: int):
     img_ret = img.clone()
     img_ret = torch.roll(img_ret, (gx, gy), dims=(-2, -1))
     return img_ret
+
+class UniformNoiseImages(torch.utils.data.Dataset):
+    def __init__(self, img_size: tuple, dset_size: int):
+        self.img_size = img_size
+        self.dset_size = dset_size
+
+    def __len__(self):
+        return self.dset_size
+
+    def __getitem__(self, idx):
+        if idx >= self.dset_size:
+            raise AttributeError('Index exceeds dataset size')
+        torch.manual_seed(idx)
+        img = torch.rand(3, *self.img_size)
+        label = 2*(torch.rand(1).item() < .5) - 1
+        return img, label
+    
 
 class ShiftDataset2D(torch.utils.data.Dataset):
     def __init__(self, core_dataset, core_indices=None):
@@ -97,6 +109,7 @@ effnet = timm.models.factory.create_model('efficientnet_b2', pretrained=True)
 effnet.eval()
 core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
                                                 transform=transform_test)
+# core_dataset = UniformNoiseImages((64,64), 100)
 # core_dataset = timm.data.dataset_factory.create_dataset(
     # 'ImageFolder',
     # root='/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC',
