@@ -4,12 +4,14 @@ import torch
 import torchvision
 import itertools
 import torchvision.transforms as transforms
+from sklearn import svm, linear_model
 # from matplotlib import pyplot as plt
 
-n_dichotomies = 20
+# n_dichotomies = 20
+n_dichotomies = 12
 n_inputs = 3
-max_epochs = 100
-max_epochs_no_imp = 20
+max_epochs = 500
+max_epochs_no_imp = 100
 improve_tol = 1e-3
 batch_size = 256
 num_channels = 5
@@ -20,6 +22,7 @@ net_style = 'rand_conv'
 dataset_name = 'random'
 # shift_style = '1d'
 shift_style = '2d'
+torch.manual_seed(3)
 
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
 # image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -169,7 +172,7 @@ elif shift_style == '2d':
 else:
     raise AttributeError('Unrecognized option for shift_style.')
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                         num_workers=2)
+                                         num_workers=2, shuffle=True)
 test_input, test_label, core_idx = next(iter(dataloader))
 # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
 h_test = feature_fn(test_input)
@@ -194,63 +197,57 @@ def class_acc(outs, targets):
     correct = 1.0*(outs * random_labels > 0)
     return torch.mean(correct)
 
-
-class Perceptron(torch.nn.Module):
-    def __init__(self, N):
-        super().__init__()
-        self.readout_w = torch.nn.Parameter(torch.randn(N) / N**.5)
-
-    def forward(self, input):
-        return input @ self.readout_w
-
 class_acc_dichs = []
 for k1 in range(n_dichotomies):
     class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
-    perceptron = Perceptron(N)
-    optimizer = torch.optim.Adam(perceptron.parameters(), lr=.001,
-                                weight_decay = 0*1e-10)
+    while len(set(class_random_labels)) < 2:
+        class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
+    perceptron = linear_model.SGDClassifier(fit_intercept=False)
     curr_best_loss = 100.0
     num_no_imp = 0
     for epoch in range(max_epochs):
         losses_epoch = []
         class_acc_epoch = []
         for k2, (input, label, core_idx) in enumerate(dataloader):
-            random_labels = class_random_labels[core_idx]
+            random_labels = class_random_labels[core_idx].numpy()
             h = feature_fn(input)
-            h = h.reshape(h.shape[0], -1)
-            optimizer.zero_grad()
-            out = perceptron(h)
-            # y = 2*label - 1
-            loss = loss_fn(out, random_labels)
-            loss.backward()
-            optimizer.step()
-            losses_epoch.append(loss.item())
-            curr_avg_loss = sum(losses_epoch)/len(losses_epoch)
-            class_acc_epoch.append(class_acc(out, random_labels).item())
+            h = h.reshape(h.shape[0], -1).numpy()
+            perceptron.partial_fit(h, random_labels, classes=(-1, 1))
+            class_acc_epoch.append(perceptron.score(h, random_labels).item())
             curr_avg_acc = sum(class_acc_epoch)/len(class_acc_epoch)
             perc_compl = round(100*(k2/len(dataloader)))
             print(f'Epoch {epoch} progress: {perc_compl}%')
-            print(f'Current average loss: {curr_avg_loss}')
-            print(f'Current average acc: {curr_avg_acc}')
-            # print('\r')
-        if curr_avg_loss >= curr_best_loss - improve_tol:
-            num_no_imp += 1
-        else:
-            num_no_imp = 0
-        curr_best_loss = min(curr_avg_loss, curr_best_loss)
-        if num_no_imp > max_epochs_no_imp:
-            break
+        print(f'Epoch average acc: {curr_avg_acc}')
+        # if curr_avg_loss >= curr_best_loss - improve_tol:
+            # num_no_imp += 1
+        # else:
+            # num_no_imp = 0
+        # curr_best_loss = min(curr_avg_loss, curr_best_loss)
+        # if num_no_imp > max_epochs_no_imp:
+            # break
         if curr_avg_acc == 1.0:
             break
     # Get classification accuracy
-    class_acc_final = []
-    for k2, (input, label, core_idx) in enumerate(dataloader):
-        random_labels = class_random_labels[core_idx]
-        h = feature_fn(input)
-        h = h.reshape(h.shape[0], -1)
-        out = perceptron(h)
-        class_acc_final.append(class_acc(out, random_labels).item())
-    class_acc_dichs.append(sum(class_acc_final) / len(class_acc_final))
+    class_acc_dichs.append(curr_avg_acc)
+
+    # # Code to check that the SGD method matches a standard SVM
+    # n = len(dataloader.dataset)
+    # input, __, core_idx = zip(
+        # *[dataloader.dataset[k] for k in range(n)])
+    # core_idx = [c.item() for c in core_idx]
+    # input = torch.stack(input)
+    # h = feature_fn(input)
+    # X = h.reshape(h.shape[0], -1).numpy()
+    # Y = class_random_labels[core_idx]
+    # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
+                          # fit_intercept=False)
+    # fitter.fit(X, Y)
+    # acc = fitter.score(X,Y)
+    # # if acc == 1.0 and class_acc_dich < 1.0:
+    # if acc == 1.0 and curr_avg_acc < 1.0:
+        # print("Discrepancy.")
+        # breakpoint()
+
 
 capacity = (1.0*(torch.tensor(class_acc_dichs) == 1.0)).mean().item()
 print(capacity)
