@@ -6,12 +6,14 @@ import itertools
 import torchvision.transforms as transforms
 # from matplotlib import pyplot as plt
 
-n_dichotomies = 100
+n_dichotomies = 20
 n_inputs = 1000
-epochs = 5
-batch_size = 128
+max_epochs = 10
+max_epochs_no_imp = 5
+batch_size = 512
 net_style = 'conv'
 # net_style = 'grid'
+# net_style = 'rand_conv'
 # dataset_name = 'imagenet'
 dataset_name = 'random'
 
@@ -110,11 +112,31 @@ class HingeLoss(torch.nn.Module):
 
 if net_style == 'conv':
     net = timm.models.factory.create_model('efficientnet_b2', pretrained=True)
+    def feature_fn(input):
+        with torch.no_grad():
+            return net.get_features(input)[0]
 elif net_style == 'grid':
     net = torch.nn.Sequential(
         torch.nn.Conv2d(3, 10, 3),
-        models.MultiplePeriodicAggregate2D(((14, 14), (8, 8)))
+        torch.nn.ReLU(),
+        models.MultiplePeriodicAggregate2D(((14, 14), (8, 8))),
     )
+    def feature_fn(input):
+        with torch.no_grad():
+            hlist = net(input)
+        hlist = [h.reshape(*h.shape[:2], -1) for h in hlist]
+        h = torch.cat(hlist, dim=-1)
+        return h
+elif net_style == 'rand_conv':
+    net = torch.nn.Sequential(
+        torch.nn.Conv2d(3, 10, 3),
+        torch.nn.ReLU()
+    )
+    def feature_fn(input):
+        with torch.no_grad():
+            return net(input)
+else:
+    raise AttributeError('net_style option not recognized')
 net.eval()
 if dataset_name.lower() == 'imagenet':
     core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
@@ -141,21 +163,8 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                          num_workers=2)
 test_input, test_label, core_idx = next(iter(dataloader))
 # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
-
-if net_style == 'conv':
-    with torch.no_grad():
-        h_test = net.get_features(test_input)
-    h0 = h_test[0]
-    N = torch.prod(torch.tensor(h0.shape[1:]))
-elif net_style == 'grid':
-    with torch.no_grad():
-        h_test = net(test_input)
-    h_test = [h.reshape(*h.shape[:2], -1) for h in h_test]
-    h_test = torch.cat(h_test, dim=-1)
-    N = torch.prod(torch.tensor(h_test.shape[1:]))
-else:
-    raise AttributeError('net_style option not recognized')
-    # N = h_test.shape[-1]
+h_test = feature_fn(test_input)
+N = torch.prod(torch.tensor(h_test.shape[1:]))
 
 # # %%  Test data sampling
 # cnt = 0
@@ -171,6 +180,11 @@ else:
 
 loss_fn = HingeLoss()
 
+def class_acc(outs, targets):
+    correct = 1.0*(outs * random_labels > 0)
+    return torch.mean(correct)
+
+
 class Perceptron(torch.nn.Module):
     def __init__(self, N):
         super().__init__()
@@ -179,22 +193,18 @@ class Perceptron(torch.nn.Module):
     def forward(self, input):
         return input @ self.readout_w
 
+class_acc_dichs = []
 for k1 in range(n_dichotomies):
     class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
     perceptron = Perceptron(N)
-    optimizer = torch.optim.Adam(perceptron.parameters(), lr=.0001)
-    for epoch in range(epochs):
-        for input, label, core_idx in dataloader:
+    optimizer = torch.optim.Adam(perceptron.parameters(), lr=.001)
+    curr_best_loss = 100.0
+    num_no_imp = 0
+    for epoch in range(max_epochs):
+        losses_epoch = []
+        for k2, (input, label, core_idx) in enumerate(dataloader):
             random_labels = class_random_labels[core_idx]
-            if net_style == 'conv':
-                with torch.no_grad():
-                    h = net.get_features(input)[0]
-                h = h.reshape(h.shape[0], -1)
-            elif net_style == 'grid':
-                with torch.no_grad():
-                    hlist = net(input)
-                hlist = [h.reshape(*h.shape[:2], -1) for h in hlist]
-                h = torch.cat(hlist, dim=-1)
+            h = feature_fn(input)
             h = h.reshape(h.shape[0], -1)
             optimizer.zero_grad()
             out = perceptron(h)
@@ -202,5 +212,36 @@ for k1 in range(n_dichotomies):
             loss = loss_fn(out, random_labels)
             loss.backward()
             optimizer.step()
-            print(loss.item())
+            losses_epoch.append(loss.item())
+            curr_avg_loss = sum(losses_epoch)/len(losses_epoch)
+            perc_compl = round(100*(k2/len(dataloader)))
+            print(f'Epoch {epoch} progress: {perc_compl}%')
+            print(f'Current average loss: {curr_avg_loss}')
+            # print('\r')
+        if curr_avg_loss >= curr_best_loss:
+            num_no_imp += 1
+        else:
+            num_no_imp = 0
+        curr_best_loss = min(curr_avg_loss, curr_best_loss)
+        if num_no_imp > max_epochs_no_imp:
+            break
+    # Get classification accuracy
+    class_acc_batch = []
+    for k2, (input, label, core_idx) in enumerate(dataloader):
+        random_labels = class_random_labels[core_idx]
+        if net_style == 'conv':
+            with torch.no_grad():
+                h = net.get_features(input)[0]
+            h = h.reshape(h.shape[0], -1)
+        elif net_style == 'grid':
+            with torch.no_grad():
+                hlist = net(input)
+            hlist = [h.reshape(*h.shape[:2], -1) for h in hlist]
+            h = torch.cat(hlist, dim=-1)
+        h = h.reshape(h.shape[0], -1)
+        out = perceptron(h)
+        class_acc_batch.append(class_acc(out, random_labels))
+    class_acc_dichs.append(sum(class_acc_batch) / len(class_acc_batch))
 
+capacity = (class_acc_dichs == 1.0) / len(class_acc_dich)
+print(capacity)
