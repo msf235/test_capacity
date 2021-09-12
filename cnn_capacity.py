@@ -7,15 +7,19 @@ import torchvision.transforms as transforms
 # from matplotlib import pyplot as plt
 
 n_dichotomies = 20
-n_inputs = 1000
+n_inputs = 10
 max_epochs = 10
 max_epochs_no_imp = 5
-batch_size = 512
-net_style = 'conv'
+improve_tol = 1e-3
+batch_size = 256
+num_channels = 5
+# net_style = 'conv'
 # net_style = 'grid'
-# net_style = 'rand_conv'
+net_style = 'rand_conv'
 # dataset_name = 'imagenet'
 dataset_name = 'random'
+# shift_style = '1d'
+shift_style = '2d'
 
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
 # image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -117,7 +121,7 @@ if net_style == 'conv':
             return net.get_features(input)[0]
 elif net_style == 'grid':
     net = torch.nn.Sequential(
-        torch.nn.Conv2d(3, 10, 3),
+        torch.nn.Conv2d(3, num_channels, 3),
         torch.nn.ReLU(),
         models.MultiplePeriodicAggregate2D(((14, 14), (8, 8))),
     )
@@ -129,7 +133,7 @@ elif net_style == 'grid':
         return h
 elif net_style == 'rand_conv':
     net = torch.nn.Sequential(
-        torch.nn.Conv2d(3, 10, 3),
+        torch.nn.Conv2d(3, num_channels, 3),
         torch.nn.ReLU()
     )
     def feature_fn(input):
@@ -142,7 +146,7 @@ if dataset_name.lower() == 'imagenet':
     core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
                                                     transform=transform_test)
 elif dataset_name.lower() == 'random':
-    core_dataset = UniformNoiseImages((16,16), batch_size)
+    core_dataset = UniformNoiseImages((10,10), n_inputs)
 else:
     raise AttributeError('dataset_name option not recognized')
 # core_dataset = timm.data.dataset_factory.create_dataset(
@@ -158,7 +162,12 @@ else:
 
 num_samples_core = len(core_dataset)
 random_samples = torch.randperm(num_samples_core)[:n_inputs]
-dataset = ShiftDataset1D(core_dataset, core_indices=random_samples)
+if shift_style == '1d':
+    dataset = ShiftDataset1D(core_dataset, core_indices=random_samples)
+elif shift_style == '2d':
+    dataset = ShiftDataset2D(core_dataset, core_indices=random_samples)
+else:
+    raise AttributeError('Unrecognized option for shift_style.')
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                          num_workers=2)
 test_input, test_label, core_idx = next(iter(dataloader))
@@ -197,7 +206,8 @@ class_acc_dichs = []
 for k1 in range(n_dichotomies):
     class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
     perceptron = Perceptron(N)
-    optimizer = torch.optim.Adam(perceptron.parameters(), lr=.001)
+    optimizer = torch.optim.Adam(perceptron.parameters(), lr=.005, eps=1e-12,
+                                weight_decay = 1e-10)
     curr_best_loss = 100.0
     num_no_imp = 0
     for epoch in range(max_epochs):
@@ -218,7 +228,7 @@ for k1 in range(n_dichotomies):
             print(f'Epoch {epoch} progress: {perc_compl}%')
             print(f'Current average loss: {curr_avg_loss}')
             # print('\r')
-        if curr_avg_loss >= curr_best_loss:
+        if curr_avg_loss >= curr_best_loss - improve_tol:
             num_no_imp += 1
         else:
             num_no_imp = 0
@@ -229,19 +239,11 @@ for k1 in range(n_dichotomies):
     class_acc_batch = []
     for k2, (input, label, core_idx) in enumerate(dataloader):
         random_labels = class_random_labels[core_idx]
-        if net_style == 'conv':
-            with torch.no_grad():
-                h = net.get_features(input)[0]
-            h = h.reshape(h.shape[0], -1)
-        elif net_style == 'grid':
-            with torch.no_grad():
-                hlist = net(input)
-            hlist = [h.reshape(*h.shape[:2], -1) for h in hlist]
-            h = torch.cat(hlist, dim=-1)
+        h = feature_fn(input)
         h = h.reshape(h.shape[0], -1)
         out = perceptron(h)
         class_acc_batch.append(class_acc(out, random_labels))
     class_acc_dichs.append(sum(class_acc_batch) / len(class_acc_batch))
 
-capacity = (class_acc_dichs == 1.0) / len(class_acc_dich)
+capacity = (class_acc_dichs == 1.0) / len(class_acc_dichs)
 print(capacity)
