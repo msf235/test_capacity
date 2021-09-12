@@ -7,9 +7,9 @@ import torchvision.transforms as transforms
 # from matplotlib import pyplot as plt
 
 n_dichotomies = 20
-n_inputs = 10
-max_epochs = 10
-max_epochs_no_imp = 5
+n_inputs = 3
+max_epochs = 100
+max_epochs_no_imp = 20
 improve_tol = 1e-3
 batch_size = 256
 num_channels = 5
@@ -60,7 +60,6 @@ class UniformNoiseImages(torch.utils.data.Dataset):
         label = 2*(torch.rand(1).item() < .5) - 1
         return img, label
     
-
 class ShiftDataset2D(torch.utils.data.Dataset):
     def __init__(self, core_dataset, core_indices=None):
         self.core_dataset = core_dataset
@@ -133,7 +132,8 @@ elif net_style == 'grid':
         return h
 elif net_style == 'rand_conv':
     net = torch.nn.Sequential(
-        torch.nn.Conv2d(3, num_channels, 3),
+        torch.nn.Conv2d(3, num_channels, 3, padding='same',
+                        padding_mode='circular'),
         torch.nn.ReLU()
     )
     def feature_fn(input):
@@ -180,12 +180,13 @@ N = torch.prod(torch.tensor(h_test.shape[1:]))
 # for input, label, core_idx in dataloader:
     # cnt += 1
     # random_labels = class_random_labels[core_idx]
+    # print(input.shape)
     # print(label)
     # print(core_idx)
     # print(random_labels)
     # print(cnt)
 
-# %% 
+# # %% 
 
 loss_fn = HingeLoss()
 
@@ -206,12 +207,13 @@ class_acc_dichs = []
 for k1 in range(n_dichotomies):
     class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
     perceptron = Perceptron(N)
-    optimizer = torch.optim.Adam(perceptron.parameters(), lr=.005, eps=1e-12,
-                                weight_decay = 1e-10)
+    optimizer = torch.optim.Adam(perceptron.parameters(), lr=.001,
+                                weight_decay = 0*1e-10)
     curr_best_loss = 100.0
     num_no_imp = 0
     for epoch in range(max_epochs):
         losses_epoch = []
+        class_acc_epoch = []
         for k2, (input, label, core_idx) in enumerate(dataloader):
             random_labels = class_random_labels[core_idx]
             h = feature_fn(input)
@@ -224,9 +226,12 @@ for k1 in range(n_dichotomies):
             optimizer.step()
             losses_epoch.append(loss.item())
             curr_avg_loss = sum(losses_epoch)/len(losses_epoch)
+            class_acc_epoch.append(class_acc(out, random_labels).item())
+            curr_avg_acc = sum(class_acc_epoch)/len(class_acc_epoch)
             perc_compl = round(100*(k2/len(dataloader)))
             print(f'Epoch {epoch} progress: {perc_compl}%')
             print(f'Current average loss: {curr_avg_loss}')
+            print(f'Current average acc: {curr_avg_acc}')
             # print('\r')
         if curr_avg_loss >= curr_best_loss - improve_tol:
             num_no_imp += 1
@@ -235,15 +240,17 @@ for k1 in range(n_dichotomies):
         curr_best_loss = min(curr_avg_loss, curr_best_loss)
         if num_no_imp > max_epochs_no_imp:
             break
+        if curr_avg_acc == 1.0:
+            break
     # Get classification accuracy
-    class_acc_batch = []
+    class_acc_final = []
     for k2, (input, label, core_idx) in enumerate(dataloader):
         random_labels = class_random_labels[core_idx]
         h = feature_fn(input)
         h = h.reshape(h.shape[0], -1)
         out = perceptron(h)
-        class_acc_batch.append(class_acc(out, random_labels))
-    class_acc_dichs.append(sum(class_acc_batch) / len(class_acc_batch))
+        class_acc_final.append(class_acc(out, random_labels).item())
+    class_acc_dichs.append(sum(class_acc_final) / len(class_acc_final))
 
-capacity = (class_acc_dichs == 1.0) / len(class_acc_dichs)
+capacity = (1.0*(torch.tensor(class_acc_dichs) == 1.0)).mean().item()
 print(capacity)
