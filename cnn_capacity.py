@@ -34,7 +34,7 @@ n_dichotomies = 30
 # n_inputs = [10]
 # n_inputs = [60]
 # n_inputs = [60]
-n_inputs = [5]
+n_inputs = [6]
 max_epochs = 50
 # max_epochs = 40
 # max_epochs_no_imp = 100 # Not implemented
@@ -45,7 +45,7 @@ batch_size = 512
 # n_channels = [2, 3, 4, 5, 6]
 # n_channels = [21, 25, 29, 33, 37]
 # n_channels = [29]
-n_channels = [2]
+n_channels = [3]
 # n_channels = [50]
 # n_channels = [40]
 # n_channels = [8]
@@ -103,11 +103,14 @@ def get_shifted_img(img: torch.Tensor, gx: int, gy: int):
     return img_ret
 
 class UniformNoiseImages(torch.utils.data.Dataset):
-    def __init__(self, img_size: tuple, dset_size: int):
+    def __init__(self, img_size: tuple, dset_size: int, seed=None):
         self.img_size = img_size
         self.dset_size = dset_size
         self.rng = torch.Generator()
-        print(self.rng.initial_seed())
+        if seed is not None:
+            self.rng.manual_seed(seed)
+        self.seed = seed
+        # print(self.rng.initial_seed())
 
     def __len__(self):
         return self.dset_size
@@ -121,10 +124,13 @@ class UniformNoiseImages(torch.utils.data.Dataset):
         return img, label
 
 class WhiteNoiseImages(torch.utils.data.Dataset):
-    def __init__(self, img_size: tuple, dset_size: int):
+    def __init__(self, img_size: tuple, dset_size: int, seed=None):
         self.img_size = img_size
         self.dset_size = dset_size
         self.rng = torch.Generator()
+        if seed is not None:
+            self.rng.manual_seed(seed)
+        self.seed = seed
         print(self.rng.initial_seed())
         # self.rng.seed()
 
@@ -229,7 +235,6 @@ class HingeLoss(torch.nn.Module):
 
 # % Main function for capacity
 def get_capacity(n_channels, n_inputs):
-    print(torch.randn(2))
     warnings.filterwarnings("ignore", category=ConvergenceWarning)
     params = hyperparams.copy()
     params.update({'n_channels': n_channels, 'n_inputs': n_inputs})
@@ -297,10 +302,12 @@ def get_capacity(n_channels, n_inputs):
                                                         transform=transform_test)
     elif dataset_name.lower() == 'uniformrandom':
         core_dataset = UniformNoiseImages(
-            (inp_channels, img_size_x, img_size_y), n_inputs)
+            (inp_channels, img_size_x, img_size_y), n_inputs,
+        seed=torch.randint(0, 100000, (1,)).item())
     elif dataset_name.lower() == 'gaussianrandom':
         core_dataset = WhiteNoiseImages(
-            (inp_channels, img_size_x, img_size_y), n_inputs)
+            (inp_channels, img_size_x, img_size_y), n_inputs,
+        seed=torch.randint(0, 100000, (1,)).item())
     else:
         raise AttributeError('dataset_name option not recognized')
     # core_dataset = timm.data.dataset_factory.create_dataset(
