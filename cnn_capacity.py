@@ -21,58 +21,44 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 output_dir = 'output'
 fig_dir = 'figs'
-rerun = True
-# rerun = False
-# n_cores = 10
-n_cores = 1
+# rerun = True # If True, rerun the simulation even if a matching simulation is
+               # found saved to disk
+rerun = False
+n_cores = 10
+# n_cores = 1
 
-n_dichotomies = 200
-# n_dichotomies = 30
-# n_dichotomies = 12
-# n_dichotomies = 6
-# n_dichotomies = 3
-# n_inputs = [7,8,9]
-# n_inputs = [10]
-# n_inputs = [60]
-# n_inputs = [60]
-n_inputs = [20]
-# n_inputs = [5]
-max_epochs = 500
-# max_epochs = 40
-# max_epochs_no_imp = 100 # Not implemented
-# improve_tol = 1e-3 # Not implemented
-batch_size = 512
-# n_channels = [5,6,7]
-# n_channels = [8, 12, 16, 20]
-# n_channels = [2, 3, 4, 5, 6]
-# n_channels = [21, 25, 29, 33, 37]
-# n_channels = [29]
-n_channels = list(range(5,30))
-# n_channels = [1,2,3,4,5,6,7,8,9,10]
-# n_channels = [50]
-# n_channels = [40]
-# n_channels = [8]
-# n_channels = [2]
-# img_size_x = 30
-img_size_x = 10
-img_size_y = 1
-# net_style = 'conv'
-# net_style = 'grid'
-net_style = 'rand_conv'
-# net_style = 'randpoints'
-# dataset_name = 'imagenet'
-# dataset_name = 'uniformrandom' # Not implemented
-dataset_name = 'gaussianrandom'
-# shift_style = '1d'
-shift_style = '2d'
-pool = True
-# pool = False
-fit_intercept = True
+n_dichotomies = 100 # Number of random dichotomies to test
+n_inputs = [40] # Number of input samples to test
+max_epochs = 500 # Maximum number of epochs if training with SGD
+# max_epochs_no_imp = 100 # Not implemented. Training will stop after
+                          # this number of epochs without improvement
+# improve_tol = 1e-3 # Not implemented. The tolerance for improvement.
+batch_size = 512 # Batch size if training with SGD
+n_channels = list(range(10,60,2)) # Number of channels to test in output layer.
+img_size_x = 20 # Size of image x dimension.
+img_size_y = 1 # Size of image y dimension.
+# net_style = 'conv' # Not fully implemented. Efficientnet layers.
+# net_style = 'grid' # Not fully implemented. Grid cell CNN.
+net_style = 'rand_conv' # Random convolutional layer.
+# net_style = 'randpoints' # Random points. Used to make sure linear
+                           # classifier is working alright.
+# dataset_name = 'imagenet' # Not fully implemented. Use imagenet inputs.
+dataset_name = 'gaussianrandom' # Use Gaussian random inputs.
+# shift_style = '1d' # Take input 1d shifts (shift in only x dimension).
+shift_style = '2d' # Use input shifts in both x and y dimensions
+# pool = True # Whether or not to average (pool) the representation over the
+              # group before fitting the linear classifier.
+pool = False
+fit_intercept = True # Whether or not to fit the intercept in the linear
+                     # classifier
 # fit_intercept = False
-# center_response = True
+# center_response = True # Whether or not to mean center each representation
+                         # response 
 center_response = False
-seed = 3
+seed = 3 # RNG seed
 
+# Collect hyperparameters in a dictionary so that simulations can be
+# automatically saved and loaded based on the values.
 hyperparams = dict(n_dichotomies=n_dichotomies, max_epochs=max_epochs,
                    batch_size=batch_size, 
                    img_size_x=img_size_x, img_size_y=img_size_y,
@@ -82,59 +68,22 @@ hyperparams = dict(n_dichotomies=n_dichotomies, max_epochs=max_epochs,
                    center_response=center_response, seed=seed)
 
 
+# ImageNet directory
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
 # image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
 
-
 def get_shifted_img(img: torch.Tensor, gx: int, gy: int):
+    """Receives input image img and returns a shifted version,
+    where the shift in the x direction is given by gx and in the y direction
+    by gy."""
     img_ret = img.clone()
     img_ret = torch.roll(img_ret, (gx, gy), dims=(-2, -1))
     return img_ret
 
-# class UniformNoiseImages(torch.utils.data.Dataset):
-    # def __init__(self, img_size: tuple, dset_size: int, seed=None):
-        # self.img_size = img_size
-        # self.dset_size = dset_size
-        # # self.rng = torch.Generator() # Cannot use with multiprocessing
-        # self.rng = torch.Generator() # Cannot use with multiprocessing
-        # if seed is not None:
-            # self.rng.manual_seed(seed)
-        # self.seed = seed
-        # # print(self.rng.initial_seed())
-
-    # def __len__(self):
-        # return self.dset_size
-
-    # def __getitem__(self, idx):
-        # if idx >= self.dset_size:
-            # raise AttributeError('Index exceeds dataset size')
-        # self.rng.manual_seed(idx)
-        # img = torch.rand(*self.img_size, generator=self.rng)
-        # label = 2*(torch.rand(1).item() < .5) - 1
-        # return img, label
-
-# class WhiteNoiseImages(torch.utils.data.Dataset):
-    # def __init__(self, img_size: tuple, dset_size: int, seed=None):
-        # self.img_size = img_size
-        # self.dset_size = dset_size
-        # self.rng = torch.Generator()
-        # if seed is not None:
-            # self.rng.manual_seed(seed)
-        # self.seed = seed
-        # # self.rng.seed()
-
-    # def __len__(self):
-        # return self.dset_size
-
-    # def __getitem__(self, idx):
-        # if idx >= self.dset_size:
-            # raise AttributeError('Index exceeds dataset size')
-        # self.rng.manual_seed(idx)
-        # img = torch.randn(*self.img_size, generator=self.rng)
-        # label = 2*(torch.rand(1).item() < .5) - 1
-        # return img, label
-    
 class ShiftDataset2D(torch.utils.data.Dataset):
+    """Takes in a normal dataset of images and produces a dataset that
+    samples from 2d shifts of this dataset, keeping the label for each
+    shifted version of an image the same."""
     def __init__(self, core_dataset, core_indices: Optional[list] = None):
         super().__init__()
         self.core_dataset = core_dataset
@@ -158,25 +107,10 @@ class ShiftDataset2D(torch.utils.data.Dataset):
         img, label = self.core_dataset[idx_core]
         return get_shifted_img(img, gx, gy), label, idx_core
 
-class ShiftCentroid2D(torch.utils.data.Dataset):
-    def __init__(self, core_dataset, core_indices=None):
-        super().__init__()
-        self.core_dataset = core_dataset
-        # self.sx, self.sy = self.core_dataset[0][0].shape[1:]
-
-    def __len__(self):
-        return len(self.core_dataset)
-
-    def __getitem__(self, idx):
-        x, label = self.core_dataset[idx]
-        x_v = x.reshape(x.shape[0], -1)
-        n = x_v.shape[-1]
-        P = torch.outer(torch.ones(n), torch.ones(n)) / n
-        Px_v = x_v @ P.T
-        centroid = Px_v.reshape(*x.shape)
-        return centroid, label, torch.tensor(idx)
-
 class ShiftDataset1D(torch.utils.data.Dataset):
+    """Takes in a normal dataset of images and produces a dataset that
+    samples from 1d shifts of this dataset, keeping the label for each
+    shifted version of an image the same."""
     def __init__(self, core_dataset, core_indices: Optional[list] = None):
         super().__init__()
         self.core_dataset = core_dataset
@@ -198,21 +132,6 @@ class ShiftDataset1D(torch.utils.data.Dataset):
         img, label = self.core_dataset[idx_core]
         return get_shifted_img(img, 0, gy), label, idx_core
 
-# class ShiftCentroid1D(torch.utils.data.Dataset):
-    # def __init__(self, core_dataset, core_indices=None):
-        # super().__init__()
-        # self.core_dataset = core_dataset
-        # # self.sx, self.sy = self.core_dataset[0][0].shape[1:]
-
-    # def __getitem__(self, idx):
-        # x, label = self.core_dataset[idx]
-        # x_v = x.reshape(*x.shape[:2], -1)
-        # n = x_v.shape[-1]
-        # P = torch.outer(torch.ones(n), torch.ones(n)) / n
-        # Px_v = x_v @ P.T
-        # centroid = Px_v.reshape(*x.shape)
-        # return centroid
-
 class HingeLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -222,13 +141,15 @@ class HingeLoss(torch.nn.Module):
         hinge_loss[hinge_loss < 0] = 0
         return hinge_loss.mean()
 
-# % Main function for capacity
+# % Main function for capacity. This function is memoized based on its
+# parameters and the values in hyperparams.
 def get_capacity(n_channels, n_inputs):
-    # print(torch.rand(1))
+    """Take number of channels of response (n_channels) and number of input
+    responses (n_inputs) and return the capacity of the representation"""
     warnings.filterwarnings("ignore", category=ConvergenceWarning)
     params = hyperparams.copy()
     params.update({'n_channels': n_channels, 'n_inputs': n_inputs})
-    if mom.run_exists(params, output_dir) and not rerun:
+    if mom.run_exists(params, output_dir) and not rerun: # Memoization
         run_id = mom.get_run_entry(params, output_dir)
         run_dir = output_dir + f'/run_{run_id}'
         try:
@@ -304,34 +225,14 @@ def get_capacity(n_channels, n_inputs):
         ])
         core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
                                                         transform=transform_test)
-    elif dataset_name.lower() == 'uniformrandom':
-        core_dataset = UniformNoiseImages(
-            (inp_channels, img_size_x, img_size_y), n_inputs,
-        seed=torch.randint(0, 100000, (1,)).item())
     elif dataset_name.lower() == 'gaussianrandom':
         def zero_one_to_pm_one(y):
             return 2*y - 1
-        # transform_img = transforms.Compose((transforms.ToTensor(),
-                                      # zero_one_to_pm_one))
-
         core_dataset = fakedata.FakeData(n_inputs,
                             (inp_channels, img_size_x, img_size_y),
                             target_transform=zero_one_to_pm_one)
-        # core_dataset = WhiteNoiseImages(
-            # (inp_channels, img_size_x, img_size_y), n_inputs,
-        # seed=torch.randint(0, 100000, (1,)).item())
     else:
         raise AttributeError('dataset_name option not recognized')
-    # core_dataset = timm.data.dataset_factory.create_dataset(
-        # 'ImageFolder',
-        # root='/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC',
-        # batch_size=1)
-
-                                             # sampler=binary_sampler)
-    # dataloader = timm.data.loader.create_loader(dataset, (3,224,224), 1,
-                                               # num_workers=0,
-                                                # persistent_workers=False,)
-                                               # # sampler=binary_sampler)
 
     num_samples_core = len(core_dataset)
     random_samples = torch.randperm(num_samples_core)[:n_inputs]
@@ -353,13 +254,15 @@ def get_capacity(n_channels, n_inputs):
     h_test = feature_fn(test_input)
     N = torch.prod(torch.tensor(h_test.shape[1:]))
 
-    train_style = 'batched'
-    if len(dataloader.dataset) <= 7.5e08/n_cores: # Entire dataset should be <= 30 Gigabytes
+    if len(dataloader.dataset) <= 7.5e08/n_cores: # Entire dataset should be
+                                                  # <= 30 Gigabytes
         train_style = 'whole'
+    else:
+        train_style = 'batched'
 
     # # %%  Test data sampling
     # ds = dataloader.dataset
-    # def no(k):
+    # def no(k): Get network output
         # return net(ds[k][0].unsqueeze(dim=0)).squeeze()
     
     # cnt = 0
@@ -380,16 +283,19 @@ def get_capacity(n_channels, n_inputs):
         correct = 1.0*(outs * random_labels > 0)
         return torch.mean(correct)
 
-    # class_acc_dichs = []
-    def dich_loop(k1):
+    def dich_loop():
+        """Generates random labels and returns the accuracy of a classifier
+        trained on the dataset."""
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         while len(set(class_random_labels.tolist())) < 2:
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
-        perceptron = linear_model.SGDClassifier(fit_intercept=False,
+        perceptron = linear_model.SGDClassifier(fit_intercept=fit_intercept,
                                                alpha=1e-10)
+        N = img_size_x * img_size_y
+        Pt = torch.ones(N, 1)
         if train_style == 'batched':
-            print(f'Training using batched SGD')
+            # print(f'Training using batched SGD')
             # curr_best_loss = 100.0
             # num_no_imp = 0
             for epoch in range(max_epochs):
@@ -398,9 +304,16 @@ def get_capacity(n_channels, n_inputs):
                 for k2, (input, label, core_idx) in enumerate(dataloader):
                     random_labels = class_random_labels[core_idx].numpy()
                     h = feature_fn(input)
-                    h = h.reshape(h.shape[0], -1).numpy()
-                    perceptron.partial_fit(h, random_labels, classes=(-1, 1))
-                    class_acc_epoch.append(perceptron.score(h, random_labels).item())
+                    if pool:
+                        hrs = h.reshape(*h.shape[:2], -1)
+                        centroids = hrs @ Pt
+                        X = centroids.reshape(centroids.shape[0], -1).numpy().astype(float)
+                        Y = np.array(class_random_labels)
+                    else:
+                        X = h.reshape(h.shape[0], -1).numpy()
+                        Y = random_labels
+                    perceptron.partial_fit(X, Y, classes=(-1, 1))
+                    class_acc_epoch.append(perceptron.score(X, Y).item())
                     curr_avg_acc = sum(class_acc_epoch)/len(class_acc_epoch)
                     perc_compl = round(100*(k2/len(dataloader)))
                     print(f'Epoch {epoch} progress: {perc_compl}%')
@@ -414,17 +327,12 @@ def get_capacity(n_channels, n_inputs):
                     # break
                 if curr_avg_acc == 1.0:
                     break
-            # Get classification accuracy
-            class_acc_dichs.append(curr_avg_acc)
+            return curr_avg_acc
         elif train_style == 'whole':
-            print('Training standard SVM.')
-            # Code to check that the SGD method matches a standard SVM.
+            # print('Training standard SVM.')
             if pool:
                 ds = dataloader.dataset.core_dataset
                 n = len(ds)
-                N = img_size_x * img_size_y
-                P = torch.outer(torch.ones(n), torch.ones(n)) / n
-                Pt = torch.ones(N, 1)
                 inputs, labels = zip(*[ds[k] for k in range(n)])
                 inputs = torch.stack(inputs)
                 h = feature_fn(inputs)
@@ -436,13 +344,14 @@ def get_capacity(n_channels, n_inputs):
                 n = len(dataloader.dataset)
                 input, __, core_idx = zip(
                     *[dataloader.dataset[k] for k in range(n)])
-                core_idx = [c.item() for c in core_idx]
+                core_idx = list(core_idx)
                 input = torch.stack(input)
                 h = feature_fn(input)
                 hnp = h.numpy().astype(float)
                 X = hnp.reshape(h.shape[0], -1)
                 Y = class_random_labels[core_idx].numpy().astype(float)
 
+                ## Debug code for computing centroids directly
                 # core_idx = torch.tensor(core_idx)
                 # centroids_inp = torch.zeros(n_inputs, *input.shape[1:])
                 # for k2 in range(n_inputs):
@@ -466,12 +375,9 @@ def get_capacity(n_channels, n_inputs):
                 # fitter.fit(centroids_f_rs, Yc)
                 # acc = fitter.score(centroids_f_rs, Yc)
 
-                # input = input.numpy()
             fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
                                   fit_intercept=fit_intercept)
-            # fitter = svm.LinearSVC(C=5.)
-            # fitter = svm.LinearSVC(tol=1e-6, max_iter=40000, C=30.,
-                                  # fit_intercept=False)
+            ## Debug code for checking rank of data 
             # Xmc = X - np.mean(X, axis=0)
             # C = X.T @ Xmc
             # ew, ev = np.linalg.eigh(C)
@@ -484,14 +390,11 @@ def get_capacity(n_channels, n_inputs):
             return acc
 
 
-    # def dich_loop(k1):
-        # return torch.randn(1)
-    
     if n_cores == 1:
-        class_acc_dichs = [dich_loop(k1) for k1 in range(n_dichotomies)]
+        class_acc_dichs = [dich_loop() for k1 in range(n_dichotomies)]
     else:
         class_acc_dichs = Parallel(n_jobs=n_cores)(
-            delayed(dich_loop)(k1) for k1 in range(n_dichotomies))
+            delayed(dich_loop)() for k1 in range(n_dichotomies))
 
     capacity = (1.0*(torch.tensor(class_acc_dichs) == 1.0)).mean().item()
     if fit_intercept:
@@ -499,6 +402,7 @@ def get_capacity(n_channels, n_inputs):
     else:
         alpha = n_inputs / n_channels
     print(f'alpha: {alpha}, capacity: {capacity}')
+    ## Now save results of the run to a pickled dictionary
     run_id = mom.get_run_entry(params, output_dir)
     run_dir = output_dir + f'/run_{run_id}/'
     os.makedirs(run_dir, exist_ok=True)
@@ -532,8 +436,7 @@ if __name__ == '__main__':
                  # n_channel, 'capacity': capacity}
             # results_table = results_table.append(d, ignore_index=True)
 
-    results_table.to_pickle('output/most_recent.pkl')
-
+    results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(columns=['n_channel', 'n_input'])
     fig, ax = plt.subplots()
     sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table)
