@@ -24,7 +24,8 @@ fig_dir = 'figs'
 # rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
-n_cores = 10
+n_cores = 10 # Number of processor cores to use for multiprocessing. Recommend
+             # setting to 1 for debugging.
 # n_cores = 1
 
 n_dichotomies = 100 # Number of random dichotomies to test
@@ -247,8 +248,13 @@ def get_capacity(n_channels, n_inputs):
                                   core_indices=random_samples.tolist())
     else:
         raise AttributeError('Unrecognized option for shift_style.')
+    if n_cores > 1:
+        num_workers = 0
+    else:
+        num_workers = 3
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                             num_workers=0, shuffle=True)
+                                             num_workers=num_workers,
+                                             shuffle=True)
     test_input, test_label, core_idx = next(iter(dataloader))
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
     h_test = feature_fn(test_input)
