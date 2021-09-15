@@ -24,7 +24,8 @@ fig_dir = 'figs'
 # rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
-n_cores = 10
+n_cores = 10 # Number of processor cores to use for multiprocessing. Recommend
+             # setting to 1 for debugging.
 # n_cores = 1
 
 n_dichotomies = 100 # Number of random dichotomies to test
