@@ -15,6 +15,7 @@ import pickle as pkl
 import numpy as np
 import warnings
 from typing import *
+import fakedata
 from sklearn.exceptions import ConvergenceWarning
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
@@ -25,8 +26,8 @@ rerun = True
 # n_cores = 10
 n_cores = 1
 
-# n_dichotomies = 50
-n_dichotomies = 30
+n_dichotomies = 200
+# n_dichotomies = 30
 # n_dichotomies = 12
 # n_dichotomies = 6
 # n_dichotomies = 3
@@ -34,8 +35,9 @@ n_dichotomies = 30
 # n_inputs = [10]
 # n_inputs = [60]
 # n_inputs = [60]
-n_inputs = [6]
-max_epochs = 50
+n_inputs = [20]
+# n_inputs = [5]
+max_epochs = 500
 # max_epochs = 40
 # max_epochs_no_imp = 100 # Not implemented
 # improve_tol = 1e-3 # Not implemented
@@ -45,23 +47,24 @@ batch_size = 512
 # n_channels = [2, 3, 4, 5, 6]
 # n_channels = [21, 25, 29, 33, 37]
 # n_channels = [29]
-n_channels = [3]
+n_channels = list(range(5,30))
+# n_channels = [1,2,3,4,5,6,7,8,9,10]
 # n_channels = [50]
 # n_channels = [40]
 # n_channels = [8]
+# n_channels = [2]
 # img_size_x = 30
-img_size_x = 3
+img_size_x = 10
 img_size_y = 1
 # net_style = 'conv'
 # net_style = 'grid'
 net_style = 'rand_conv'
 # net_style = 'randpoints'
 # dataset_name = 'imagenet'
-# dataset_name = 'uniformrandom'
+# dataset_name = 'uniformrandom' # Not implemented
 dataset_name = 'gaussianrandom'
 # shift_style = '1d'
-shift_style = '2d' # Remove
-# shift_style = '2d_centroid'
+shift_style = '2d'
 pool = True
 # pool = False
 fit_intercept = True
@@ -75,75 +78,61 @@ hyperparams = dict(n_dichotomies=n_dichotomies, max_epochs=max_epochs,
                    img_size_x=img_size_x, img_size_y=img_size_y,
                    net_style=net_style,
                    dataset_name=dataset_name, shift_style=shift_style,
-                   fit_intercept=fit_intercept,
+                   pool=pool, fit_intercept=fit_intercept,
                    center_response=center_response, seed=seed)
 
 
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
 # image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
 
-normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                         std=[0.229, 0.224, 0.225])
-transform_train = transforms.Compose([
-    transforms.RandomResizedCrop(224),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    normalize,
-])
-transform_test = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    normalize,
-])
 
 def get_shifted_img(img: torch.Tensor, gx: int, gy: int):
     img_ret = img.clone()
     img_ret = torch.roll(img_ret, (gx, gy), dims=(-2, -1))
     return img_ret
 
-class UniformNoiseImages(torch.utils.data.Dataset):
-    def __init__(self, img_size: tuple, dset_size: int, seed=None):
-        self.img_size = img_size
-        self.dset_size = dset_size
-        self.rng = torch.Generator()
-        if seed is not None:
-            self.rng.manual_seed(seed)
-        self.seed = seed
-        # print(self.rng.initial_seed())
+# class UniformNoiseImages(torch.utils.data.Dataset):
+    # def __init__(self, img_size: tuple, dset_size: int, seed=None):
+        # self.img_size = img_size
+        # self.dset_size = dset_size
+        # # self.rng = torch.Generator() # Cannot use with multiprocessing
+        # self.rng = torch.Generator() # Cannot use with multiprocessing
+        # if seed is not None:
+            # self.rng.manual_seed(seed)
+        # self.seed = seed
+        # # print(self.rng.initial_seed())
 
-    def __len__(self):
-        return self.dset_size
+    # def __len__(self):
+        # return self.dset_size
 
-    def __getitem__(self, idx):
-        if idx >= self.dset_size:
-            raise AttributeError('Index exceeds dataset size')
-        self.rng.manual_seed(idx)
-        img = torch.rand(*self.img_size, generator=self.rng)
-        label = 2*(torch.rand(1).item() < .5) - 1
-        return img, label
+    # def __getitem__(self, idx):
+        # if idx >= self.dset_size:
+            # raise AttributeError('Index exceeds dataset size')
+        # self.rng.manual_seed(idx)
+        # img = torch.rand(*self.img_size, generator=self.rng)
+        # label = 2*(torch.rand(1).item() < .5) - 1
+        # return img, label
 
-class WhiteNoiseImages(torch.utils.data.Dataset):
-    def __init__(self, img_size: tuple, dset_size: int, seed=None):
-        self.img_size = img_size
-        self.dset_size = dset_size
-        self.rng = torch.Generator()
-        if seed is not None:
-            self.rng.manual_seed(seed)
-        self.seed = seed
-        print(self.rng.initial_seed())
-        # self.rng.seed()
+# class WhiteNoiseImages(torch.utils.data.Dataset):
+    # def __init__(self, img_size: tuple, dset_size: int, seed=None):
+        # self.img_size = img_size
+        # self.dset_size = dset_size
+        # self.rng = torch.Generator()
+        # if seed is not None:
+            # self.rng.manual_seed(seed)
+        # self.seed = seed
+        # # self.rng.seed()
 
-    def __len__(self):
-        return self.dset_size
+    # def __len__(self):
+        # return self.dset_size
 
-    def __getitem__(self, idx):
-        if idx >= self.dset_size:
-            raise AttributeError('Index exceeds dataset size')
-        self.rng.manual_seed(idx)
-        img = torch.randn(*self.img_size, generator=self.rng)
-        label = 2*(torch.rand(1).item() < .5) - 1
-        return img, label
+    # def __getitem__(self, idx):
+        # if idx >= self.dset_size:
+            # raise AttributeError('Index exceeds dataset size')
+        # self.rng.manual_seed(idx)
+        # img = torch.randn(*self.img_size, generator=self.rng)
+        # label = 2*(torch.rand(1).item() < .5) - 1
+        # return img, label
     
 class ShiftDataset2D(torch.utils.data.Dataset):
     def __init__(self, core_dataset, core_indices: Optional[list] = None):
@@ -235,6 +224,7 @@ class HingeLoss(torch.nn.Module):
 
 # % Main function for capacity
 def get_capacity(n_channels, n_inputs):
+    # print(torch.rand(1))
     warnings.filterwarnings("ignore", category=ConvergenceWarning)
     params = hyperparams.copy()
     params.update({'n_channels': n_channels, 'n_inputs': n_inputs})
@@ -298,6 +288,20 @@ def get_capacity(n_channels, n_inputs):
     else:
         inp_channels = 3
     if dataset_name.lower() == 'imagenet':
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                 std=[0.229, 0.224, 0.225])
+        transform_train = transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ])
+        transform_test = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize,
+        ])
         core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
                                                         transform=transform_test)
     elif dataset_name.lower() == 'uniformrandom':
@@ -305,9 +309,17 @@ def get_capacity(n_channels, n_inputs):
             (inp_channels, img_size_x, img_size_y), n_inputs,
         seed=torch.randint(0, 100000, (1,)).item())
     elif dataset_name.lower() == 'gaussianrandom':
-        core_dataset = WhiteNoiseImages(
-            (inp_channels, img_size_x, img_size_y), n_inputs,
-        seed=torch.randint(0, 100000, (1,)).item())
+        def zero_one_to_pm_one(y):
+            return 2*y - 1
+        # transform_img = transforms.Compose((transforms.ToTensor(),
+                                      # zero_one_to_pm_one))
+
+        core_dataset = fakedata.FakeData(n_inputs,
+                            (inp_channels, img_size_x, img_size_y),
+                            target_transform=zero_one_to_pm_one)
+        # core_dataset = WhiteNoiseImages(
+            # (inp_channels, img_size_x, img_size_y), n_inputs,
+        # seed=torch.randint(0, 100000, (1,)).item())
     else:
         raise AttributeError('dataset_name option not recognized')
     # core_dataset = timm.data.dataset_factory.create_dataset(
