@@ -420,7 +420,6 @@ class EfficientNet(nn.Module):
         super(EfficientNet, self).__init__()
         act_layer = act_layer or nn.ReLU
         norm_layer = norm_layer or nn.BatchNorm2d
-        print(f"BN layer: {norm_layer}")  # For debugging purposes
         se_layer = se_layer or SqueezeExcite
         self.num_classes = num_classes
         self.num_features = num_features
