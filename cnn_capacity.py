@@ -36,7 +36,7 @@ parallelization_level = 'inner'     # Sets the level at which to do
 n_dichotomies = 50 # Number of random dichotomies to test
 n_inputs = [40] # Number of input samples to test
 # n_inputs = [16] # Number of input samples to test
-max_epochs = 500 # Maximum number of epochs if training with SGD
+max_epochs = 500 # Maximum number of epochs.
 # max_epochs_no_imp = 100 # Not implemented. Training will stop after
                           # this number of epochs without improvement
 # improve_tol = 1e-3 # Not implemented. The tolerance for improvement.
@@ -44,7 +44,7 @@ batch_size = 256 # Batch size if training with SGD
 # n_channels = list(range(10,50,2)) # Number of channels to test in output layer.
 # n_channels = [16] 
 # n_channels = list(range(5,17, 2)) 
-alphas = torch.linspace(0.8, 3.2, 10)
+alphas = torch.linspace(0.8, 3.0, 10)
 n_channels = torch.round(torch.tensor(n_inputs)/alphas).int().tolist()
 img_size_x = 10 # Size of image x dimension.
 img_size_y = 10 # Size of image y dimension.
@@ -431,7 +431,8 @@ def get_capacity(n_channels, n_inputs):
 
             # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
                                   # fit_intercept=fit_intercept)
-            fitter = svm.LinearSVC(C=20., fit_intercept=fit_intercept)
+            fitter = svm.LinearSVC(C=20., fit_intercept=fit_intercept,
+                                   max_iter=max_epochs)
             ## Debug code for checking rank of data 
             # Xmc = X - np.mean(X, axis=0)
             # C = X.T @ Xmc
