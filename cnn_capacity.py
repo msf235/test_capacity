@@ -23,8 +23,8 @@ fig_dir = 'figs'
 rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 # rerun = False
-n_cores = 15 # Number of processor cores to use for multiprocessing. Recommend
-# n_cores = 1    # setting to 1 for debugging.
+n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+# n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
                                     # multiprocessing. If 'inner' then the level is
                                     # in the inner loop over dichotomies. If
@@ -50,17 +50,17 @@ img_size_y = 1 # Size of image y dimension.
 # img_size_y = 224 # Size of image y dimension.
 # net_style = 'conv' # Efficientnet layers.
 # net_style = 'grid' # Not fully implemented. Grid cell CNN.
-# net_style = 'rand_conv' # Random convolutional layer.
-net_style = 'randpoints' # Random points. Used to make sure linear
+net_style = 'rand_conv' # Random convolutional layer.
+# net_style = 'randpoints' # Random points. Used to make sure linear
                            # classifier is working alright.
 layer_idx = 0 # Index for layer to get from conv net. Currently only
               # implemented for net_style = 'conv'.
-# dataset_name = 'imagenet' # Not fully implemented. Use imagenet inputs.
+# dataset_name = 'imagenet' # Use imagenet inputs.
 dataset_name = 'gaussianrandom' # Use Gaussian random inputs.
 # shift_style = '1d' # Take input 1d shifts (shift in only x dimension).
 shift_style = '2d' # Use input shifts in both x and y dimensions
-shift_x = 2 # Number of pixels by which to shift in the x direction
-shift_y = 2 # Number of pixels by which to shift in the y direction
+shift_x = 1 # Number of pixels by which to shift in the x direction
+shift_y = 1 # Number of pixels by which to shift in the y direction
 # pool = True # Whether or not to average (pool) the representation over the
 pool = False  # group before fitting the linear classifier.
 fit_intercept = True # Whether or not to fit the intercept in the linear
@@ -381,7 +381,7 @@ def get_capacity(n_channels, n_inputs):
                     break
             return curr_avg_acc
         elif train_style == 'whole':
-            print('Training standard SVM.')
+            # print('Training standard SVM.')
             if pool:
                 ds = dataloader.dataset.core_dataset
                 n = len(ds)
@@ -427,9 +427,9 @@ def get_capacity(n_channels, n_inputs):
                 # fitter.fit(centroids_f_rs, Yc)
                 # acc = fitter.score(centroids_f_rs, Yc)
 
-            fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
-                                  fit_intercept=fit_intercept)
-            # fitter = svm.LinearSVC(C=20., fit_intercept=fit_intercept)
+            # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
+                                  # fit_intercept=fit_intercept)
+            fitter = svm.LinearSVC(C=20., fit_intercept=fit_intercept)
             ## Debug code for checking rank of data 
             # Xmc = X - np.mean(X, axis=0)
             # C = X.T @ Xmc
