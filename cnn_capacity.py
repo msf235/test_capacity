@@ -1,23 +1,22 @@
 import os
-import timm
-import models
 import torch
 import torchvision
 import itertools
 import torchvision.transforms as transforms
 from sklearn import svm, linear_model
+from sklearn.exceptions import ConvergenceWarning
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
 from joblib import Parallel, delayed
-import model_output_manager as mom
 import pickle as pkl
 import numpy as np
 import warnings
 from typing import *
 import fakedata
-from sklearn.exceptions import ConvergenceWarning
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
+import timm
+import models
+import model_output_manager as mom
 
 output_dir = 'output'
 fig_dir = 'figs'
@@ -25,8 +24,7 @@ fig_dir = 'figs'
                # found saved to disk
 rerun = False
 n_cores = 10 # Number of processor cores to use for multiprocessing. Recommend
-             # setting to 1 for debugging.
-# n_cores = 1
+# n_cores = 1    # setting to 1 for debugging.
 
 n_dichotomies = 100 # Number of random dichotomies to test
 n_inputs = [40] # Number of input samples to test
@@ -36,6 +34,8 @@ max_epochs = 500 # Maximum number of epochs if training with SGD
 # improve_tol = 1e-3 # Not implemented. The tolerance for improvement.
 batch_size = 512 # Batch size if training with SGD
 n_channels = list(range(10,60,2)) # Number of channels to test in output layer.
+# n_channels = list(range(5,17, 2)) # Number of channels to test in output layer.
+# n_channels = list(range(10,60,2)) # Number of channels to test in output layer.
 img_size_x = 20 # Size of image x dimension.
 img_size_y = 1 # Size of image y dimension.
 # net_style = 'conv' # Not fully implemented. Efficientnet layers.
@@ -43,19 +43,19 @@ img_size_y = 1 # Size of image y dimension.
 net_style = 'rand_conv' # Random convolutional layer.
 # net_style = 'randpoints' # Random points. Used to make sure linear
                            # classifier is working alright.
-# dataset_name = 'imagenet' # Not fully implemented. Use imagenet inputs.
-dataset_name = 'gaussianrandom' # Use Gaussian random inputs.
+layer_idx = 0 # Index for layer to get from conv net. Currently only
+              # implemented for net_style = 'conv'.
+dataset_name = 'imagenet' # Not fully implemented. Use imagenet inputs.
+# dataset_name = 'gaussianrandom' # Use Gaussian random inputs.
 # shift_style = '1d' # Take input 1d shifts (shift in only x dimension).
 shift_style = '2d' # Use input shifts in both x and y dimensions
 # pool = True # Whether or not to average (pool) the representation over the
-              # group before fitting the linear classifier.
-pool = False
+pool = False  # group before fitting the linear classifier.
 fit_intercept = True # Whether or not to fit the intercept in the linear
                      # classifier
 # fit_intercept = False
 # center_response = True # Whether or not to mean center each representation
-                         # response 
-center_response = False
+center_response = False  # response 
 seed = 3 # RNG seed
 
 # Collect hyperparameters in a dictionary so that simulations can be
@@ -81,14 +81,26 @@ def get_shifted_img(img: torch.Tensor, gx: int, gy: int):
     img_ret = torch.roll(img_ret, (gx, gy), dims=(-2, -1))
     return img_ret
 
+class SubsampledData(torch.utils.data.Dataset):
+    def __init__(self, dataset, sample_idx):
+        super().__init__()
+        self.dataset = dataset
+        self.sample_idx = sample_idx
+
+    def __len__(self):
+        return len(self.sample_idx)
+
+    def __getitem__(self, idx):
+        item = self.dataset[self.sample_idx[idx]]
+        return item
+
 class ShiftDataset2D(torch.utils.data.Dataset):
     """Takes in a normal dataset of images and produces a dataset that
     samples from 2d shifts of this dataset, keeping the label for each
     shifted version of an image the same."""
-    def __init__(self, core_dataset, core_indices: Optional[list] = None):
+    def __init__(self, core_dataset):
         super().__init__()
         self.core_dataset = core_dataset
-        self.core_indices = core_indices
         self.sx, self.sy = self.core_dataset[0][0].shape[1:]
         # self.targets = torch.tile(torch.tensor(self.core_dataset.targets),
                                   # (self.sx*self.sy,))  # Too large for memory
@@ -103,8 +115,6 @@ class ShiftDataset2D(torch.utils.data.Dataset):
         # g = self.G[g_idx] # Lazy approach
         gx = g_idx // self.sy 
         gy = g_idx % self.sy
-        if self.core_indices is not None:
-            idx_core = self.core_indices[idx_core]
         img, label = self.core_dataset[idx_core]
         return get_shifted_img(img, gx, gy), label, idx_core
 
@@ -112,10 +122,9 @@ class ShiftDataset1D(torch.utils.data.Dataset):
     """Takes in a normal dataset of images and produces a dataset that
     samples from 1d shifts of this dataset, keeping the label for each
     shifted version of an image the same."""
-    def __init__(self, core_dataset, core_indices: Optional[list] = None):
+    def __init__(self, core_dataset):
         super().__init__()
         self.core_dataset = core_dataset
-        self.core_indices = core_indices
         self.sy = self.core_dataset[0][0].shape[-1]
         # self.targets = torch.tile(torch.tensor(self.core_dataset.targets),
                                   # (self.sy,))
@@ -128,8 +137,6 @@ class ShiftDataset1D(torch.utils.data.Dataset):
         idx_core = idx // self.sy
         idx_core = idx // self.sy
         gy = g_idx % self.sy
-        if self.core_indices is not None:
-            idx_core = self.core_indices[idx_core]
         img, label = self.core_dataset[idx_core]
         return get_shifted_img(img, 0, gy), label, idx_core
 
@@ -162,9 +169,12 @@ def get_capacity(n_channels, n_inputs):
 
     if net_style == 'conv':
         net = timm.models.factory.create_model('efficientnet_b2', pretrained=True)
+        net.eval()
         def feature_fn(input):
             with torch.no_grad():
-                return net.get_features(input)[0]
+                feats = net.get_features(input)[layer_idx]
+                feats = feats[:, :n_channels]
+                return feats
     elif net_style == 'grid':
         convlayer = torch.nn.Conv2d(3, n_channels, 4, bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
@@ -173,6 +183,7 @@ def get_capacity(n_channels, n_inputs):
             torch.nn.ReLU(),
             models.MultiplePeriodicAggregate2D(((14, 14), (8, 8))),
         )
+        net.eval()
         def feature_fn(input):
             with torch.no_grad():
                 hlist = net(input)
@@ -188,6 +199,7 @@ def get_capacity(n_channels, n_inputs):
             convlayer,
             torch.nn.ReLU()
         )
+        net.eval()
         def feature_fn(input):
             with torch.no_grad():
                 h = net(input)
@@ -200,11 +212,11 @@ def get_capacity(n_channels, n_inputs):
                 return h
     elif net_style == 'randpoints':
         net = torch.nn.Module()
+        net.eval()
         def feature_fn(input):
             return input
     else:
         raise AttributeError('net_style option not recognized')
-    net.eval()
     if net_style == 'randpoints':
         inp_channels = n_channels
     else:
@@ -212,20 +224,23 @@ def get_capacity(n_channels, n_inputs):
     if dataset_name.lower() == 'imagenet':
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                                  std=[0.229, 0.224, 0.225])
-        transform_train = transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ])
+        # transform_train = transforms.Compose([
+            # transforms.RandomResizedCrop(224),
+            # transforms.RandomHorizontalFlip(),
+            # transforms.ToTensor(),
+            # normalize,
+        # ])
         transform_test = transforms.Compose([
             transforms.Resize(256),
-            transforms.CenterCrop(224),
+            transforms.CenterCrop((img_size_x, img_size_y)), #224 is typical
             transforms.ToTensor(),
             normalize,
         ])
-        core_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
+        
+        img_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
                                                         transform=transform_test)
+        random_samples = torch.randperm(len(img_dataset))[:n_inputs]
+        core_dataset = SubsampledData(img_dataset, random_samples)
     elif dataset_name.lower() == 'gaussianrandom':
         def zero_one_to_pm_one(y):
             return 2*y - 1
@@ -235,33 +250,38 @@ def get_capacity(n_channels, n_inputs):
     else:
         raise AttributeError('dataset_name option not recognized')
 
-    num_samples_core = len(core_dataset)
-    random_samples = torch.randperm(num_samples_core)[:n_inputs]
     if shift_style == '1d':
-        dataset = ShiftDataset1D(core_dataset,
-                                 core_indices=random_samples.tolist())
+        dataset = ShiftDataset1D(core_dataset)
     elif shift_style == '2d':
-        dataset = ShiftDataset2D(core_dataset,
-                                 core_indices=random_samples.tolist())
+        dataset = ShiftDataset2D(core_dataset)
     elif shift_style == '2d_centroid':
-        dataset = ShiftCentroid2D(core_dataset,
-                                  core_indices=random_samples.tolist())
+        dataset = ShiftCentroid2D(core_dataset)
     else:
         raise AttributeError('Unrecognized option for shift_style.')
     if n_cores > 1:
         num_workers = 0
     else:
-        num_workers = 3
+        # num_workers = 3
+        num_workers = 0
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                              num_workers=num_workers,
                                              shuffle=True)
     test_input, test_label, core_idx = next(iter(dataloader))
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
     h_test = feature_fn(test_input)
-    N = torch.prod(torch.tensor(h_test.shape[1:]))
+    if h_test.shape[1] < n_channels:
+        raise AttributeError("""Error: network response produces fewer channels
+                             than n_channels.""")
+    N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
-    if len(dataloader.dataset) <= 7.5e08/n_cores: # Entire dataset should be
-                                                  # <= 30 Gigabytes
+    ## Get the memory size of the entire dataset and network response
+    #  in megabytes
+    if pool:
+        base_size = len(dataloader.dataset.core_dataset) * img_size_x * img_size_y
+    else:
+        base_size = len(dataloader.dataset) * img_size_x * img_size_y
+    dset_memsize =  base_size * (n_channels+3) * 4
+    if dset_memsize <= 30e09/n_cores: # Memory usage <= 30 GB roughly.
         train_style = 'whole'
     else:
         train_style = 'batched'
@@ -298,7 +318,6 @@ def get_capacity(n_channels, n_inputs):
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         perceptron = linear_model.SGDClassifier(fit_intercept=fit_intercept,
                                                alpha=1e-10)
-        N = img_size_x * img_size_y
         Pt = torch.ones(N, 1)
         if train_style == 'batched':
             # print(f'Training using batched SGD')
