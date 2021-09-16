@@ -20,9 +20,9 @@ import model_output_manager as mom
 
 output_dir = 'output'
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-rerun = False
+# rerun = False
 n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
@@ -32,8 +32,8 @@ parallelization_level = 'inner'     # Sets the level at which to do
 # parallelization_level = 'outer'   # over n_inputs and n_channels.
 
 
-# n_dichotomies = 100 # Number of random dichotomies to test
-n_dichotomies = 50 # Number of random dichotomies to test
+n_dichotomies = 100 # Number of random dichotomies to test
+# n_dichotomies = 50 # Number of random dichotomies to test
 n_inputs = [40] # Number of input samples to test
 # n_inputs = [16] # Number of input samples to test
 max_epochs = 500 # Maximum number of epochs.
@@ -56,8 +56,8 @@ layer_idx = 0 # Index for layer to get from conv net. Currently only
 dataset_name = 'gaussianrandom' # Use Gaussian random inputs.
 # shift_style = '1d' # Take input 1d shifts (shift in only x dimension).
 shift_style = '2d' # Use input shifts in both x and y dimensions
-shift_x = 2 # Number of pixels by which to shift in the x direction
-shift_y = 2 # Number of pixels by which to shift in the y direction
+shift_x = 1 # Number of pixels by which to shift in the x direction
+shift_y = 1 # Number of pixels by which to shift in the y direction
 # pool = True # Whether or not to average (pool) the representation over the
 pool = False  # group before fitting the linear classifier.
 fit_intercept = True # Whether or not to fit the intercept in the linear
@@ -65,12 +65,14 @@ fit_intercept = True # Whether or not to fit the intercept in the linear
 # fit_intercept = False
 # center_response = True # Whether or not to mean center each representation
 center_response = False  # response 
-# n_channels = list(range(10,50,2)) # Number of channels to test in output layer.
-# n_channels = [16] 
-# n_channels = list(range(5,17, 2)) 
 alphas = torch.linspace(0.8, 3.0, 10)
-n_channels = torch.round(torch.tensor(n_inputs)/alphas).int()-int(fit_intercept)
-n_channels = n_channels.tolist()
+# alphas = torch.linspace(3, 8, 8)
+n_channels_temp = torch.round(torch.tensor(n_inputs)/alphas).int()
+n_channels_temp -= int(fit_intercept)
+n_channels_temp = n_channels_temp.tolist()
+n_channels = []
+[n_channels.append(x) for x in n_channels_temp if x not in n_channels]
+print(f"Using channels: \n{n_channels}")
 seed = 3 # RNG seed
 
 # Collect hyperparameters in a dictionary so that simulations can be
@@ -324,11 +326,9 @@ def get_capacity(n_channels, n_inputs):
     # cnt = 0
     # for input, label, core_idx in dataloader:
         # cnt += 1
-        # random_labels = class_random_labels[core_idx]
         # print(input.shape)
         # print(label)
         # print(core_idx)
-        # print(random_labels)
         # print(cnt)
 
     # # %% 
@@ -439,6 +439,7 @@ def get_capacity(n_channels, n_inputs):
             # C = X.T @ Xmc
             # ew, ev = np.linalg.eigh(C)
             fitter.fit(X, Y)
+            # print(Y)
             acc = fitter.score(X, Y)
             # fig, ax = plt.subplots()
             # ax.scatter(X[:,0], X[:,1], c=Y)
