@@ -23,6 +23,7 @@ import pickle as pkl
 import numpy as np
 import warnings
 from typing import *
+
 import timm
 import models
 import model_output_manager as mom
@@ -46,7 +47,8 @@ seed = 3
 
 # Collect hyperparameters in a dictionary so that simulations can be
 # automatically saved and loaded based on the values.
-hyperparams = hp.random_2d_conv.copy()
+# hyperparams = hp.random_2d_conv.copy()
+hyperparams = hp.random_2d_conv_shift2.copy()
 hyperparams['seed'] = seed
 
 n_inputs = hyperparams['n_inputs']
@@ -77,38 +79,65 @@ class HingeLoss(torch.nn.Module):
 # % Main function for capacity. This function is memoized based on its
 # parameters and the values in hyperparams.
 def get_capacity(
-n_channels, # Number of channels in the network response.
-n_inputs, # Number of input samples to use.
-n_dichotomies=100, # Number of random dichotomies to test
-max_epochs=500, # Maximum number of epochs.
-# max_epochs_no_imp=100, # Not implemented. Training will stop after
-                         # this number of epochs without improvement
-# improve_tol=1e-3, # Not implemented. The tolerance for improvement.
-batch_size=256, # Batch size if training with SGD
-img_size_x=10, # Size of image x dimension.
-img_size_y=10, # Size of image y dimension.
-net_style='rand_conv', # Style of network. Valid options are 'conv', 'grid',
-                       # 'rand_conv', and 'randpoints'.
-layer_idx=0, # Index for layer to get from conv net. Currently only
-             # implemented for net_style='conv'.
-dataset_name='gaussianrandom', # The dataset. Options are 'imagenet' and
-                               # 'gaussianrandom'
-shift_style='2d', # Shift style. Options are 1d (shift in only x dimension)
-                  # and 2d (use input shifts in both x and y dimensions).
-shift_x=1, # Number of pixels by which to shift in the x direction
-shift_y=1, # Number of pixels by which to shift in the y direction
-pool=False, # Whether or not to average (pool) the representation over the
-            # group before fitting the linear classifier.
-fit_intercept=True, # Whether or not to fit the intercept in the linear
-                    # classifier
-center_response=True, # Whether or not to mean center each representation
-                      # response.
-seed=3, # Random number generator seed. Currently haven't guaranteed perfect
-        # reproducibility.
-                ):
+    n_channels, n_inputs, n_dichotomies=100, max_epochs=500,
+    max_epochs_no_imp=100, improve_tol=1e-3, batch_size=256, img_size_x=10,
+    img_size_y=10, net_style='rand_conv', layer_idx=0,
+    dataset_name='gaussianrandom', shift_style='2d', shift_x=1, shift_y=1,
+    pool_over_group=False, pool='max', fit_intercept=True,
+    center_response=True, seed=3, ):
     """Take number of channels of response (n_channels) and number of input
     responses (n_inputs) and a set of hyperparameters and return the capacity
-    of the representation."""
+    of the representation.
+
+    Parameters
+    ----------
+    n_channels : int
+		Number of channels in the network response.
+    n_inputs : int
+		Number of input samples to use.
+    n_dichotomies : int
+		Number of random dichotomies to test
+    max_epochs : int
+		Maximum number of epochs.
+    # max_epochs_no_imp : int
+        Not implemented. Training will stop after this number of epochs without
+        improvement
+    # improve_tol : 
+		Not implemented. The tolerance for improvement.
+    batch_size : int
+		Batch size if training with SGD
+    img_size_x : int
+		Size of image x dimension.
+    img_size_y : int
+		Size of image y dimension.
+    net_style : str 
+        Style of network. Valid options are 'conv', 'grid', 'rand_conv', and
+        'randpoints'.
+    layer_idx : int
+        Index for layer to get from conv net. Currently only implemented for
+        net_style='conv'.
+    dataset_name : str 
+		The dataset. Options are 'imagenet' and 'gaussianrandom'
+    shift_style : str 
+        Shift style. Options are 1d (shift in only x dimension) and 2d (use
+        input shifts in both x and y dimensions).
+    shift_x : int
+		Number of pixels by which to shift in the x direction
+    shift_y : int
+		Number of pixels by which to shift in the y direction
+    pool_over_group : bool 
+        Whether or not to average (pool) the representation over the group
+        before fitting the linear classifier.
+    pool : Optional[str] 
+		Pooling to use for representation. Options are None, 'max', and 'mean'.
+    fit_intercept : bool 
+		Whether or not to fit the intercept in the linear classifier.
+    center_response : bool 
+        Whether or not to mean center each representation response.
+    seed : int
+		Random number generator seed. Currently haven't guaranteed perfect
+        reproducibility.
+    """
     loc = locals()
     args = inspect.getfullargspec(get_capacity)[0]
     params = {arg: loc[arg] for arg in args}
@@ -151,6 +180,7 @@ seed=3, # Random number generator seed. Currently haven't guaranteed perfect
                             padding='same', padding_mode='circular',
                             bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
+        if 
         net = torch.nn.Sequential(
             convlayer,
             torch.nn.ReLU()
@@ -230,7 +260,7 @@ seed=3, # Random number generator seed. Currently haven't guaranteed perfect
 
     ## Get the memory size of the entire dataset and network response
     #  in megabytes
-    if pool:
+    if pool_over_group:
         base_size = len(dataloader.dataset.core_dataset) * img_size_x * img_size_y
     else:
         base_size = len(dataloader.dataset) * img_size_x * img_size_y
@@ -281,7 +311,7 @@ seed=3, # Random number generator seed. Currently haven't guaranteed perfect
                 for k2, (input, label, core_idx) in enumerate(dataloader):
                     random_labels = class_random_labels[core_idx].numpy()
                     h = feature_fn(input)
-                    if pool:
+                    if pool_over_group:
                         hrs = h.reshape(*h.shape[:2], -1)
                         centroids = hrs @ Pt
                         X = centroids.reshape(centroids.shape[0], -1).numpy().astype(float)
@@ -307,7 +337,7 @@ seed=3, # Random number generator seed. Currently haven't guaranteed perfect
             return curr_avg_acc
         elif train_style == 'whole':
             # print('Training standard SVM.')
-            if pool:
+            if pool_over_group:
                 ds = dataloader.dataset.core_dataset
                 n = len(ds)
                 inputs, labels = zip(*[ds[k] for k in range(n)])
