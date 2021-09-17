@@ -37,7 +37,7 @@ fig_dir = 'figs'
                # found saved to disk
 rerun = False
 # n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
-n_cores = 4  # Number of processor cores to use for multiprocessing. Recommend
+n_cores = 4 
 # n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
                                     # multiprocessing. If 'inner' then the level is
@@ -46,13 +46,14 @@ parallelization_level = 'inner'     # Sets the level at which to do
 # parallelization_level = 'outer'   # over n_inputs and n_channels.
 seed = 3
 
-# Collect hyperparameters in a dictionary so that simulations can be
-# automatically saved and loaded based on the values.
+## Collect parameters in a dictionary so that simulations can be
+## automatically saved and loaded based on the values.
 # hyperparams = hp.random_2d_conv.copy()
 # hyperparams = hp.random_2d_conv_shift2.copy()
 hyperparams = hp.random_2d_conv_maxpool2.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
+# hyperparams = hp.efficientnet_imagenet.copy()
 
 hyperparams['seed'] = seed
 
@@ -85,14 +86,14 @@ class HingeLoss(torch.nn.Module):
         return hinge_loss.mean()
 
 # % Main function for capacity. This function is memoized based on its
-# parameters and the values in hyperparams.
+# parameters.
 def get_capacity(
     n_channels, n_inputs, n_dichotomies=100, max_epochs=500,
     max_epochs_no_imp=100, improve_tol=1e-3, batch_size=256, img_size_x=10,
     img_size_y=10, net_style='rand_conv', layer_idx=0,
     dataset_name='gaussianrandom', shift_style='2d', shift_x=1, shift_y=1,
     pool_over_group=False, pool=None, pool_x=None, pool_y=None,
-    fit_intercept=True, center_response=True, seed=3, ):
+    fit_intercept=True, center_response=True, seed=3):
     """Take number of channels of response (n_channels) and number of input
     responses (n_inputs) and a set of hyperparameters and return the capacity
     of the representation.
@@ -129,8 +130,7 @@ def get_capacity(
         Style of network. Valid options are 'conv', 'grid', 'rand_conv', and
         'randpoints'.
     layer_idx : int
-        Index for layer to get from conv net. Currently only implemented for
-        net_style='conv'.
+        Index for layer to get from conv net.
     dataset_name : str 
 		The dataset. Options are 'imagenet' and 'gaussianrandom'
     shift_style : str 
