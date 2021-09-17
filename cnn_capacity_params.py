@@ -1,5 +1,6 @@
 import torch
 
+# Random CNN layer
 random_2d_conv = dict(
 n_dichotomies = 100, # Number of random dichotomies to test
 n_inputs = [40], # Number of input samples to test
@@ -27,8 +28,9 @@ dataset_name = 'gaussianrandom', # Use Gaussian random inputs.
 shift_style = '2d', # Use input shifts in both x and y dimensions
 shift_x = 1, # Number of pixels by which to shift in the x direction
 shift_y = 1, # Number of pixels by which to shift in the y direction
-# pool = True, # Whether or not to average (pool) the representation over the
-pool = False , # group before fitting the linear classifier.
+# pool_over_group = True, # Whether or not to average (pool) the representation over the
+pool_over_group = False, # group before fitting the linear classifier.
+pool=None, # No maxpooling of the representation.
 fit_intercept = True, # Whether or not to fit the intercept in the linear
                       # classifier
 # fit_intercept = False,
@@ -36,14 +38,24 @@ fit_intercept = True, # Whether or not to fit the intercept in the linear
 center_response = False,  # response 
 )
 
+# Random CNN layer with 2 pixel shifts
 random_2d_conv_shift2 = random_2d_conv.copy()
 random_2d_conv_shift2['shift_x'] = 2
 random_2d_conv_shift2['shift_y'] = 2
+random_2d_conv_shift2['alphas'] = torch.linspace(3.0, 8.0, 10)
 
+# Random CNN layer with max pooling
+random_2d_conv_maxpool2 = random_2d_conv.copy()
+random_2d_conv_maxpool2['pool'] = 'max'
+random_2d_conv_maxpool2['pool_x'] = 2
+random_2d_conv_maxpool2['pool_y'] = 2
+random_2d_conv_maxpool2['alphas'] = torch.linspace(3.0, 8.0, 10)
+
+# Efficientnet on imagenet
 efficientnet_imagenet = dict(
 n_dichotomies = 100, # Number of random dichotomies to test
 n_inputs = [16], # Number of input samples to test
-alphas = torch.linspace(3.0, 8.0, 10),
+alphas = torch.linspace(0.8, 3.0, 10),
 max_epochs = 500, # Maximum number of epochs.
 batch_size = 256, # Batch size if training with SGD
 img_size_x = 224, # Size of image x dimension.
@@ -55,8 +67,9 @@ dataset_name = 'imagenet', # Use imagenet inputs.
 shift_style = '2d', # Use input shifts in both x and y dimensions
 shift_x = 1, # Number of pixels by which to shift in the x direction
 shift_y = 1, # Number of pixels by which to shift in the y direction
-# pool = True, # Whether or not to average (pool) the representation over the
-pool = False , # group before fitting the linear classifier.
+# pool_over_group = True, # Whether or not to average (pool) the representation over the
+pool_over_group = False, # group before fitting the linear classifier.
+pool=None,
 fit_intercept = True, # Whether or not to fit the intercept in the linear
                       # classifier
 # fit_intercept = False,
