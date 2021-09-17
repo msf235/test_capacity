@@ -40,16 +40,22 @@ center_response = False,  # response
 
 # Random CNN layer with 2 pixel shifts
 random_2d_conv_shift2 = random_2d_conv.copy()
-random_2d_conv_shift2['shift_x'] = 2
-random_2d_conv_shift2['shift_y'] = 2
-random_2d_conv_shift2['alphas'] = torch.linspace(3.0, 8.0, 10)
+random_2d_conv_shift2.update(
+shift_x=2,
+shift_y=2,
+alphas=torch.linspace(3.0, 8.0, 10),
+)
 
 # Random CNN layer with max pooling
 random_2d_conv_maxpool2 = random_2d_conv.copy()
-random_2d_conv_maxpool2['pool'] = 'max'
-random_2d_conv_maxpool2['pool_x'] = 2
-random_2d_conv_maxpool2['pool_y'] = 2
-random_2d_conv_maxpool2['alphas'] = torch.linspace(3.0, 8.0, 10)
+random_2d_conv_maxpool2.update(
+pool='max',
+pool_x=2,
+pool_y=2,
+img_size_x=20,
+img_size_y=20,
+alphas=torch.linspace(.2, 1.5, 10),
+)
 
 # Efficientnet on imagenet
 efficientnet_imagenet = dict(

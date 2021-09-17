@@ -33,10 +33,11 @@ import datasets
 
 output_dir = 'output'
 fig_dir = 'figs'
-rerun = True # If True, rerun the simulation even if a matching simulation is
+# rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-# rerun = False
-n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+rerun = False
+# n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+n_cores = 4  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
                                     # multiprocessing. If 'inner' then the level is
@@ -48,18 +49,25 @@ seed = 3
 # Collect hyperparameters in a dictionary so that simulations can be
 # automatically saved and loaded based on the values.
 # hyperparams = hp.random_2d_conv.copy()
-hyperparams = hp.random_2d_conv_shift2.copy()
+# hyperparams = hp.random_2d_conv_shift2.copy()
+hyperparams = hp.random_2d_conv_maxpool2.copy() # Note that MaxPool2d spits out
+                                                # warnings. This is a
+                                                # documented bug in pytorch.
+
 hyperparams['seed'] = seed
 
 n_inputs = hyperparams['n_inputs']
 del hyperparams['n_inputs']
 alphas = hyperparams['alphas']
 n_channels_temp = torch.round(torch.tensor(n_inputs)/alphas).int()
-n_channels_temp -= int(hyperparams['fit_intercept']) # Do this if fit_intercept=True
+n_channels_temp -= int(hyperparams['fit_intercept']) 
 n_channels_temp = n_channels_temp.tolist()
 n_channels = []
 [n_channels.append(x) for x in n_channels_temp if x not in n_channels]
+print(f"Using # samples:")
+print(f"{n_inputs}")
 print(f"Using channels: \n{n_channels}")
+print(f"Corresponding to alpha values: \n{alphas}")
 
 del hyperparams['alphas']
 
@@ -83,11 +91,17 @@ def get_capacity(
     max_epochs_no_imp=100, improve_tol=1e-3, batch_size=256, img_size_x=10,
     img_size_y=10, net_style='rand_conv', layer_idx=0,
     dataset_name='gaussianrandom', shift_style='2d', shift_x=1, shift_y=1,
-    pool_over_group=False, pool='max', fit_intercept=True,
-    center_response=True, seed=3, ):
+    pool_over_group=False, pool=None, pool_x=None, pool_y=None,
+    fit_intercept=True, center_response=True, seed=3, ):
     """Take number of channels of response (n_channels) and number of input
     responses (n_inputs) and a set of hyperparameters and return the capacity
     of the representation.
+
+    This function checks to see how large the dataset and representation
+    would be in memory. If this value, times n_cores, is <= 30GB, then
+    the code calls linear_model.LinearSVC on the entire dataset.
+    If not, the code calls linear_model.SGDClassifier on batches of
+    the data.
 
     Parameters
     ----------
@@ -98,7 +112,8 @@ def get_capacity(
     n_dichotomies : int
 		Number of random dichotomies to test
     max_epochs : int
-		Maximum number of epochs.
+		Maximum number of epochs. This is also the max number of iterations
+        when using LinearSVC.
     # max_epochs_no_imp : int
         Not implemented. Training will stop after this number of epochs without
         improvement
@@ -130,6 +145,11 @@ def get_capacity(
         before fitting the linear classifier.
     pool : Optional[str] 
 		Pooling to use for representation. Options are None, 'max', and 'mean'.
+        Only currently implemented for net_style='rand_conv'.
+    pool_x : Optional[int] 
+		Size in pixels of pool in x direction. Set to None if pool is None.
+    pool_y : Optional[int] 
+		Size in pixels of pool in y direction. Set to None if pool is None.
     fit_intercept : bool 
 		Whether or not to fit the intercept in the linear classifier.
     center_response : bool 
@@ -138,10 +158,13 @@ def get_capacity(
 		Random number generator seed. Currently haven't guaranteed perfect
         reproducibility.
     """
+    if pool is None:
+        pool_x = None
+        pool_y = None
     loc = locals()
     args = inspect.getfullargspec(get_capacity)[0]
     params = {arg: loc[arg] for arg in args}
-    warnings.filterwarnings("ignore", category=ConvergenceWarning)
+    # warnings.filterwarnings("ignore", category=ConvergenceWarning)
     if mom.run_exists(params, output_dir) and not rerun: # Memoization
         run_id = mom.get_run_entry(params, output_dir)
         run_dir = output_dir + f'/run_{run_id}'
@@ -180,11 +203,25 @@ def get_capacity(
                             padding='same', padding_mode='circular',
                             bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
-        if 
-        net = torch.nn.Sequential(
-            convlayer,
-            torch.nn.ReLU()
-        )
+        if pool is not None:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                if pool == 'max':
+                    pool_layer = torch.nn.MaxPool2d((pool_x, pool_y),
+                                                    (pool_x, pool_y)) 
+                elif pool == 'mean':
+                    pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
+                                                    (pool_x, pool_y)) 
+                net = torch.nn.Sequential(
+                    convlayer,
+                    torch.nn.ReLU(),
+                    pool_layer
+                )
+        else:
+            net = torch.nn.Sequential(
+                convlayer,
+                torch.nn.ReLU()
+            )
         net.eval()
         def feature_fn(input):
             with torch.no_grad():
@@ -252,7 +289,9 @@ def get_capacity(
                                              shuffle=True)
     test_input, test_label, core_idx = next(iter(dataloader))
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
-    h_test = feature_fn(test_input)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        h_test = feature_fn(test_input)
     if h_test.shape[1] < n_channels:
         raise AttributeError("""Error: network response produces fewer channels
                              than n_channels.""")
@@ -411,7 +450,7 @@ def get_capacity(
         alpha = n_inputs / (n_channels + 1)
     else:
         alpha = n_inputs / n_channels
-    print(f'alpha: {alpha}, capacity: {capacity}')
+    print(f'alpha: {round(alpha,5)}, capacity: {round(capacity,5)}')
     ## Now save results of the run to a pickled dictionary
     run_id = mom.get_run_entry(params, output_dir)
     run_dir = output_dir + f'/run_{run_id}/'
