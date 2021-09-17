@@ -23,7 +23,6 @@ import pickle as pkl
 import numpy as np
 import warnings
 from typing import *
-import fakedata
 import timm
 import models
 import model_output_manager as mom
@@ -36,8 +35,8 @@ fig_dir = 'figs'
 rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 # rerun = False
-# n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
-n_cores = 1 # setting to 1 for debugging.
+n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+# n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
                                     # multiprocessing. If 'inner' then the level is
                                     # in the inner loop over dichotomies. If
