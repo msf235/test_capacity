@@ -8,6 +8,7 @@ Datasets and the relevant group-shifted versions of datasets can be found
 in datasets.py."""
 
 import os
+import sys
 import inspect
 import torch
 import torchvision
@@ -36,21 +37,23 @@ fig_dir = 'figs'
 # rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
-# n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
-n_cores = 4 
+n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+# n_cores = 4 
 # n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
                                     # multiprocessing. If 'inner' then the level is
                                     # in the inner loop over dichotomies. If
-                                    # 'outer' then the level is in the outer loop
+                                    # 'outer' then the level is in the outer
+                                    # loop. Probably best to keep this set to
+                                    # 'inner'.
 # parallelization_level = 'outer'   # over n_inputs and n_channels.
 seed = 3
 
 ## Collect parameters in a dictionary so that simulations can be
 ## automatically saved and loaded based on the values.
-# hyperparams = hp.random_2d_conv.copy()
+hyperparams = hp.random_2d_conv.copy()
 # hyperparams = hp.random_2d_conv_shift2.copy()
-hyperparams = hp.random_2d_conv_maxpool2.copy() # Note that MaxPool2d spits out
+# hyperparams = hp.random_2d_conv_maxpool2.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
 # hyperparams = hp.efficientnet_imagenet.copy()
@@ -65,10 +68,13 @@ n_channels_temp -= int(hyperparams['fit_intercept'])
 n_channels_temp = n_channels_temp.tolist()
 n_channels = []
 [n_channels.append(x) for x in n_channels_temp if x not in n_channels]
-print(f"Using # samples:")
-print(f"{n_inputs}")
-print(f"Using channels: \n{n_channels}")
-print(f"Corresponding to alpha values: \n{alphas}")
+alphas_print = alphas.tolist()
+alphas_print = [round(alpha, 4) for alpha in alphas_print]
+print()
+print(f"Using # samples: {n_inputs}")
+print(f"Using channels: {n_channels}")
+print(f"Corresponding to alpha values: {alphas_print}")
+print()
 
 del hyperparams['alphas']
 
@@ -279,11 +285,10 @@ def get_capacity(
         dataset = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
     else:
         raise AttributeError('Unrecognized option for shift_style.')
-    if n_cores > 1 and parallelization_level == 'inner':
-        num_workers = 0
+    if n_cores == 1 and parallelization_level == 'inner':
+        num_workers = 4 # Fails when combined with joblib.Parallel
     else:
-        num_workers = 4
-        # num_workers = 0
+        num_workers = 0
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                              num_workers=num_workers,
                                              shuffle=True)
@@ -440,10 +445,15 @@ def get_capacity(
 
 
     if n_cores > 1 and parallelization_level == 'inner':
-        class_acc_dichs = Parallel(n_jobs=n_cores)(
+        print(f"Beginning parallelized loop over {n_dichotomies} dichotomies.")
+        class_acc_dichs = Parallel(n_jobs=n_cores, verbose=10)(
             delayed(dich_loop)() for k1 in range(n_dichotomies))
     else:
-        class_acc_dichs = [dich_loop() for k1 in range(n_dichotomies)]
+        print(f"Beginning serial loop over {n_dichotomies} dichotomies.")
+        class_acc_dichs = []
+        for k1 in range(n_dichotomies):
+            class_acc_dichs.append(dich_loop())
+            print(f'Finished dichotomy: {k1+1}/{n_dichotomies}', end='\r')
 
     capacity = (1.0*(torch.tensor(class_acc_dichs) == 1.0)).mean().item()
     if fit_intercept:
