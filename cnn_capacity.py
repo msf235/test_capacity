@@ -20,6 +20,7 @@ from sklearn.exceptions import ConvergenceWarning
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
+sns.set_palette('colorblind')
 from joblib import Parallel, delayed
 import pickle as pkl
 import numpy as np
@@ -38,7 +39,7 @@ fig_dir = 'figs'
 # rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
-n_cores = 5  # Number of processor cores to use for multiprocessing. Recommend
+n_cores = 8  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
                                     # multiprocessing. If 'inner' then the level is
@@ -47,7 +48,7 @@ parallelization_level = 'inner'     # Sets the level at which to do
                                     # loop. Probably best to keep this set to
                                     # 'inner'.
 # parallelization_level = 'outer'   # over n_inputs and n_channels.
-seeds = [3]
+seeds = [3, 4, 5]
 
 ## Collect parameters in a dictionary so that simulations can be
 ## automatically saved and loaded based on the values.
@@ -535,6 +536,7 @@ if __name__ == '__main__':
     param_list = list(itertools.product(
         n_channels, n_inputs, layer_idx, seeds))
     # torch.manual_seed(seed)
+
     results_table = pd.DataFrame()
     if n_cores > 1 and parallelization_level == 'outer':
         capacities = Parallel(n_jobs=n_cores)(
@@ -546,12 +548,15 @@ if __name__ == '__main__':
             else:
                 alpha = n_input / n_channel
             cover_capacity = cover_theorem(n_input, n_channel)
-            d = {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
-                 'alpha': alpha, 'layer': layer, 'capacity': capacity}
+            d = pd.DataFrame(
+                {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
+                'alpha': alpha, 'layer': layer, 'capacity': capacity},
+                index=[0])
             results_table = results_table.append(d, ignore_index=True)
-            d = {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
-                 'alpha': alpha, 'layer': 'theory',
-                 'capacity': cover_capacity}
+            d = pd.DataFrame(
+                {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
+                'alpha': alpha, 'layer': 'theory',
+                'capacity': cover_capacity}, index=[0])
             results_table = results_table.append(d, ignore_index=True)
     else:
         for n_channel, n_input, layer, seed in param_list:
@@ -562,21 +567,41 @@ if __name__ == '__main__':
             capacity = get_capacity(n_channel, n_input, seed,
                                     layer_idx=layer, **hyperparams)
             cover_capacity = cover_theorem(n_input, n_channel)
-            d = {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
-                 'alpha': alpha, 'layer': layer, 'capacity': capacity}
+            d = pd.DataFrame(
+                {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
+                'alpha': alpha, 'layer': layer, 'capacity': capacity},
+                index=[0])
             results_table = results_table.append(d, ignore_index=True)
-            d = {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
-                 'alpha': alpha, 'layer': 'theory',
-                 'capacity': cover_capacity}
+            d = pd.DataFrame(
+                {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
+                'alpha': alpha, 'layer': 'theory',
+                'capacity': cover_capacity}, index=[0])
             results_table = results_table.append(d, ignore_index=True)
+
+    # for intcol in ('seed', 'n_channel', 'n_input'):
+        # results_table[intcol] = results_table[intcol].astype(int)
+    for catcol in ('layer',):
+        results_table[catcol] = results_table[catcol].astype('category')
 
     os.makedirs('figs', exist_ok=True)
     results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(columns=['n_channel', 'n_input'])
+    alpha_table_layer = alpha_table[
+        alpha_table['layer'] != 'theory']
+    alpha_table_theory = alpha_table[
+        alpha_table['layer'] == 'theory']
+    alpha_table_theory = alpha_table_theory[
+        alpha_table_theory['seed']==seeds[0]]
+    # alpha_table = results_table.drop(columns=['n_channel', 'n_input'])
     fig, ax = plt.subplots()
-    hue_order = (*layer_idx, 'theory')
-    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table, hue='layer',
-                hue_order=hue_order)
+    # hue_order = (*layer_idx, 'theory')
+    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table_layer,
+                 hue='layer')
+    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table_theory,
+                 linestyle='dashed', color='black')
+    # alpha_table_theory = alpha_table_theory.drop(columns=['layer'])
+    # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table_theory,
+                 # style=True, dashes=[(2,2)], color='black')
     ax.set_ylim([-.01, 1.01])
     fig.savefig('figs/most_recent.pdf')
 
