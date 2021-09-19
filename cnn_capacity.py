@@ -10,6 +10,7 @@ in datasets.py."""
 import os
 import sys
 import inspect
+import math
 import torch
 import torchvision
 import itertools
@@ -34,9 +35,9 @@ import datasets
 
 output_dir = 'output'
 fig_dir = 'figs'
-rerun = True # If True, rerun the simulation even if a matching simulation is
+# rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-# rerun = False
+rerun = False
 n_cores = 5  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
@@ -46,7 +47,7 @@ parallelization_level = 'inner'     # Sets the level at which to do
                                     # loop. Probably best to keep this set to
                                     # 'inner'.
 # parallelization_level = 'outer'   # over n_inputs and n_channels.
-seed = 3
+seeds = [3]
 
 ## Collect parameters in a dictionary so that simulations can be
 ## automatically saved and loaded based on the values.
@@ -58,10 +59,10 @@ seed = 3
 # hyperparams = hp.alexnet_imagenet.copy()
 hyperparams = hp.vgg11_cifar10.copy()
 
-hyperparams['seed'] = seed
-
 n_inputs = hyperparams['n_inputs']
 del hyperparams['n_inputs']
+layer_idx = hyperparams['layer_idx']
+del hyperparams['layer_idx']
 alphas = hyperparams['alphas']
 n_channels_temp = torch.round(torch.tensor(n_inputs)/alphas).int()
 n_channels_temp -= int(hyperparams['fit_intercept']) 
@@ -94,12 +95,12 @@ class HingeLoss(torch.nn.Module):
 # % Main function for capacity. This function is memoized based on its
 # parameters.
 def get_capacity(
-    n_channels, n_inputs, n_dichotomies=100, max_epochs=500,
+    n_channels, n_inputs, seed=3, n_dichotomies=100, max_epochs=500,
     max_epochs_no_imp=100, improve_tol=1e-3, batch_size=256, img_size_x=10,
     img_size_y=10, net_style='rand_conv', layer_idx=0,
     dataset_name='gaussianrandom', shift_style='2d', shift_x=1, shift_y=1,
     pool_over_group=False, pool=None, pool_x=None, pool_y=None,
-    fit_intercept=True, center_response=True, seed=3):
+    fit_intercept=True, center_response=True):
     """Take number of channels of response (n_channels) and number of input
     responses (n_inputs) and a set of hyperparameters and return the capacity
     of the representation.
@@ -181,10 +182,12 @@ def get_capacity(
         except FileNotFoundError:
             pass
 
-    # Someday I may choose to use feature hooks.
-    # For now I avoid it so I have the power to only do inference
-    # in the network up to the needed layer. However, this requires that
-    # the network model be modified to have a get_features method.
+    torch.manual_seed(seed)
+
+    ## Someday I may choose to use feature hooks.
+    ## For now I avoid it so I have the power to only do inference
+    ## in the network only up to the needed layer. However, this 
+    ## requires that the network model be modified to have a get_features method.
     # def register_feature_hooks(net, k, hook_fn):
         # cnt = 0
         # for name, layer in net._modules.items():
@@ -243,19 +246,17 @@ def get_capacity(
                             bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
         if pool is not None:
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=UserWarning)
-                if pool == 'max':
-                    pool_layer = torch.nn.MaxPool2d((pool_x, pool_y),
-                                                    (pool_x, pool_y)) 
-                elif pool == 'mean':
-                    pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
-                                                    (pool_x, pool_y)) 
-                net = torch.nn.Sequential(
-                    convlayer,
-                    torch.nn.ReLU(),
-                    pool_layer
-                )
+            if pool == 'max':
+                pool_layer = torch.nn.MaxPool2d((pool_x, pool_y),
+                                                (pool_x, pool_y)) 
+            elif pool == 'mean':
+                pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
+                                                (pool_x, pool_y)) 
+            net = torch.nn.Sequential(
+                convlayer,
+                torch.nn.ReLU(),
+                pool_layer
+            )
         else:
             net = torch.nn.Sequential(
                 convlayer,
@@ -308,7 +309,7 @@ def get_capacity(
         [transforms.ToTensor(),
          transforms.Normalize(mean=(0.4914, 0.4822, 0.4465),
                               std=(0.2023, 0.1994, 0.2010))])
-        img_dataset = torchvision.datasets.CIFAR10( root='./data/cifar10', train=False, download=True,
+        img_dataset = torchvision.datasets.CIFAR10(root='./data/cifar10', train=False, download=True,
             transform=transform)
         random_samples = torch.randperm(len(img_dataset))[:n_inputs]
         core_dataset = datasets.SubsampledData(img_dataset, random_samples)
@@ -387,7 +388,7 @@ def get_capacity(
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         perceptron = linear_model.SGDClassifier(fit_intercept=fit_intercept,
                                                alpha=1e-10)
-        Pt = torch.ones(N, 1)
+        Pt = np.ones((N, 1))
         if train_style == 'batched':
             # print(f'Training using batched SGD')
             # curr_best_loss = 100.0
@@ -431,22 +432,28 @@ def get_capacity(
                 ds = dataloader.dataset.core_dataset
                 n = len(ds)
                 inputs, labels = zip(*[ds[k] for k in range(n)])
+                del labels # Free up memory
                 inputs = torch.stack(inputs)
-                h = feature_fn(inputs)
+                h = feature_fn(inputs).numpy()
+                del inputs # Free up memory
                 hrs = h.reshape(*h.shape[:2], -1)
+                del h # Free up memory
                 centroids = hrs @ Pt
-                X = centroids.reshape(centroids.shape[0], -1).numpy().astype(float)
+                del hrs # Free up memory
+                X = centroids.reshape(centroids.shape[0], -1)
                 Y = np.array(class_random_labels)
             else:
                 n = len(dataloader.dataset)
-                input, __, core_idx = zip(
+                inputs, labels, core_idx = zip(
                     *[dataloader.dataset[k] for k in range(n)])
+                del labels # Free up memory
                 core_idx = list(core_idx)
-                input = torch.stack(input)
-                h = feature_fn(input)
-                hnp = h.numpy().astype(float)
-                X = hnp.reshape(h.shape[0], -1)
-                Y = class_random_labels[core_idx].numpy().astype(float)
+                inputs = torch.stack(inputs)
+                hnp = feature_fn(inputs).numpy()
+                del inputs # Free up memory
+                X = hnp.reshape(hnp.shape[0], -1)
+                del hnp # Free up memory and ensure X is contiguous
+                Y = class_random_labels[core_idx].numpy()
 
                 ## Debug code for computing centroids directly
                 # core_idx = torch.tensor(core_idx)
@@ -516,37 +523,60 @@ def get_capacity(
 
     return capacity
 
+def cover_theorem(P, N):
+    frac_dich = 0
+    for k in range(min(P,N)):
+        frac_dich += math.factorial(P-1) / math.factorial(P-1-k) / math.factorial(k)
+    frac_dich = 2**(1-1.0*P) * frac_dich
+    return frac_dich
+
 ## Run script by calling get_capacity 
 if __name__ == '__main__':
-    param_list = list(itertools.product(n_channels, n_inputs))
-    torch.manual_seed(seed)
+    param_list = list(itertools.product(
+        n_channels, n_inputs, layer_idx, seeds))
+    # torch.manual_seed(seed)
     results_table = pd.DataFrame()
     if n_cores > 1 and parallelization_level == 'outer':
         capacities = Parallel(n_jobs=n_cores)(
             delayed(get_capacity)(*p, **hyperparams) for p in param_list)
-        for k1, (n_input, n_channel) in enumerate(param_list):
+        for k1, (n_channel, n_input, layer, seed) in enumerate(param_list):
             capacity = capacities[k1]
-            d = {'n_channel': n_channel, 'n_input': n_input, 'alpha': n_input /
-                 n_channel, 'capacity': capacity}
+            if hyperparams['fit_intercept']:
+                alpha = n_input / (n_channel + 1)
+            else:
+                alpha = n_input / n_channel
+            cover_capacity = cover_theorem(n_input, n_channel)
+            d = {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
+                 'alpha': alpha, 'layer': layer, 'capacity': capacity}
+            results_table = results_table.append(d, ignore_index=True)
+            d = {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
+                 'alpha': alpha, 'layer': 'theory',
+                 'capacity': cover_capacity}
             results_table = results_table.append(d, ignore_index=True)
     else:
-        for n_input in n_inputs:
-            for n_channel in n_channels:
-                if hyperparams['fit_intercept']:
-                    alpha = n_input / (n_channel + 1)
-                else:
-                    alpha = n_input / n_channel
-                capacity = get_capacity(n_channel, n_input, **hyperparams)
-                d = {'n_channel': n_channel, 'n_input': n_input, 'alpha': alpha,
-                     'capacity': capacity}
-                results_table = results_table.append(d, ignore_index=True)
-    # elif run_mode == 'parallel':
+        for n_channel, n_input, layer, seed in param_list:
+            if hyperparams['fit_intercept']:
+                alpha = n_input / (n_channel + 1)
+            else:
+                alpha = n_input / n_channel
+            capacity = get_capacity(n_channel, n_input, seed,
+                                    layer_idx=layer, **hyperparams)
+            cover_capacity = cover_theorem(n_input, n_channel)
+            d = {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
+                 'alpha': alpha, 'layer': layer, 'capacity': capacity}
+            results_table = results_table.append(d, ignore_index=True)
+            d = {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
+                 'alpha': alpha, 'layer': 'theory',
+                 'capacity': cover_capacity}
+            results_table = results_table.append(d, ignore_index=True)
 
     os.makedirs('figs', exist_ok=True)
     results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(columns=['n_channel', 'n_input'])
     fig, ax = plt.subplots()
-    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table)
+    hue_order = (*layer_idx, 'theory')
+    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table, hue='layer',
+                hue_order=hue_order)
     ax.set_ylim([-.01, 1.01])
     fig.savefig('figs/most_recent.pdf')
 
