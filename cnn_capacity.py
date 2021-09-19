@@ -34,11 +34,10 @@ import datasets
 
 output_dir = 'output'
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-rerun = False
-n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
-# n_cores = 4 
+# rerun = False
+n_cores = 5  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 1 # setting to 1 for debugging.
 parallelization_level = 'inner'     # Sets the level at which to do
                                     # multiprocessing. If 'inner' then the level is
@@ -51,12 +50,13 @@ seed = 3
 
 ## Collect parameters in a dictionary so that simulations can be
 ## automatically saved and loaded based on the values.
-hyperparams = hp.random_2d_conv.copy()
+# hyperparams = hp.random_2d_conv.copy()
 # hyperparams = hp.random_2d_conv_shift2.copy()
 # hyperparams = hp.random_2d_conv_maxpool2.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
-# hyperparams = hp.efficientnet_imagenet.copy()
+# hyperparams = hp.alexnet_imagenet.copy()
+hyperparams = hp.vgg11_cifar10.copy()
 
 hyperparams['seed'] = seed
 
@@ -72,7 +72,7 @@ alphas_print = alphas.tolist()
 alphas_print = [round(alpha, 4) for alpha in alphas_print]
 print()
 print(f"Using # samples: {n_inputs}")
-print(f"Using channels: {n_channels}")
+print(f"Using # channels: {n_channels}")
 print(f"Corresponding to alpha values: {alphas_print}")
 print()
 
@@ -133,12 +133,12 @@ def get_capacity(
     img_size_y : int
 		Size of image y dimension.
     net_style : str 
-        Style of network. Valid options are 'conv', 'grid', 'rand_conv', and
-        'randpoints'.
+        Style of network. Valid options are 'vgg11', 'alexnet', 'effnet', 'grid', 
+        'rand_conv', and 'randpoints'.
     layer_idx : int
         Index for layer to get from conv net.
     dataset_name : str 
-		The dataset. Options are 'imagenet' and 'gaussianrandom'
+		The dataset. Options are 'imagenet', 'cifar10', and 'gaussianrandom'
     shift_style : str 
         Shift style. Options are 1d (shift in only x dimension) and 2d (use
         input shifts in both x and y dimensions).
@@ -181,7 +181,40 @@ def get_capacity(
         except FileNotFoundError:
             pass
 
-    if net_style == 'conv':
+    # Someday I may choose to use feature hooks.
+    # For now I avoid it so I have the power to only do inference
+    # in the network up to the needed layer. However, this requires that
+    # the network model be modified to have a get_features method.
+    # def register_feature_hooks(net, k, hook_fn):
+        # cnt = 0
+        # for name, layer in net._modules.items():
+            # #If it is a sequential, don't register a hook on it
+            # # but recursively register hook on all it's module children
+            # if isinstance(layer, nn.Sequential):
+                # register_feature_hooks(layer, k)
+            # else: # it's a non sequential. Register a hook
+                # layer.register_forward_hook(hook_fn)
+                # cnt = cnt + 1
+                # if cnt >= k:
+                    # break
+
+    if net_style == 'vgg11':
+        net = models.vgg('vgg11_bn', 'A', batch_norm=True, pretrained=True)
+        net.eval()
+        def feature_fn(inputs):
+            with torch.no_grad():
+                feats = net.get_features(inputs, layer_idx)
+                feats = feats[:, :n_channels]
+                return feats
+    elif net_style == 'alexnet':
+        net = models.alexnet(pretrained=True)
+        net.eval()
+        def feature_fn(inputs):
+            with torch.no_grad():
+                feats = net.get_features(inputs)
+                feats = feats['conv_layers'][layer_idx][:, :n_channels]
+                return feats
+    elif net_style == 'effnet':
         net = timm.models.factory.create_model('efficientnet_b2', pretrained=True)
         net.eval()
         def feature_fn(input):
@@ -242,8 +275,8 @@ def get_capacity(
     elif net_style == 'randpoints':
         net = torch.nn.Module()
         net.eval()
-        def feature_fn(input):
-            return input
+        def feature_fn(inputs):
+            return inputs
     else:
         raise AttributeError('net_style option not recognized')
     if net_style == 'randpoints':
@@ -270,6 +303,15 @@ def get_capacity(
                                                         transform=transform_test)
         random_samples = torch.randperm(len(img_dataset))[:n_inputs]
         core_dataset = datasets.SubsampledData(img_dataset, random_samples)
+    elif dataset_name.lower() == 'cifar10':
+        transform = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize(mean=(0.4914, 0.4822, 0.4465),
+                              std=(0.2023, 0.1994, 0.2010))])
+        img_dataset = torchvision.datasets.CIFAR10( root='./data/cifar10', train=False, download=True,
+            transform=transform)
+        random_samples = torch.randperm(len(img_dataset))[:n_inputs]
+        core_dataset = datasets.SubsampledData(img_dataset, random_samples)
     elif dataset_name.lower() == 'gaussianrandom':
         def zero_one_to_pm_one(y):
             return 2*y - 1
@@ -294,9 +336,7 @@ def get_capacity(
                                              shuffle=True)
     test_input, test_label, core_idx = next(iter(dataloader))
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning)
-        h_test = feature_fn(test_input)
+    h_test = feature_fn(test_input)
     if h_test.shape[1] < n_channels:
         raise AttributeError("""Error: network response produces fewer channels
                              than n_channels.""")
@@ -311,8 +351,11 @@ def get_capacity(
     dset_memsize =  base_size * (n_channels+3) * 4
     if dset_memsize <= 30e09/n_cores: # Memory usage <= 30 GB roughly.
         train_style = 'whole'
+        print("Dataset is <= 30GB -- training with standard SVM.")
     else:
         train_style = 'batched'
+        print("Dataset exceeds 30GB -- training with batches.")
+        print(f"The number of batches per epoch is {len(dataloader)}")
 
     # # %%  Test data sampling
     # ds = dataloader.dataset
@@ -335,7 +378,7 @@ def get_capacity(
         correct = 1.0*(outs * random_labels > 0)
         return torch.mean(correct)
 
-    def dich_loop():
+    def dich_loop(process_id=None):
         """Generates random labels and returns the accuracy of a classifier
         trained on the dataset."""
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -367,8 +410,11 @@ def get_capacity(
                     class_acc_epoch.append(perceptron.score(X, Y).item())
                     curr_avg_acc = sum(class_acc_epoch)/len(class_acc_epoch)
                     perc_compl = round(100*(k2/len(dataloader)))
-                    print(f'Epoch {epoch} progress: {perc_compl}%')
-                print(f'Epoch average acc: {curr_avg_acc}', end='\r\r')
+                    if process_id is None:
+                        print(f'Epoch {epoch} progress {perc_compl}%', end='\r')
+                    else:
+                        print(f'Process {process_id}: Epoch {epoch} progress {perc_compl}%', end='\r')
+                    # print(f'Process {process_id}: Epoch average acc {curr_avg_acc}')
                 # if curr_avg_loss >= curr_best_loss - improve_tol:
                     # num_no_imp += 1
                 # else:
@@ -447,7 +493,7 @@ def get_capacity(
     if n_cores > 1 and parallelization_level == 'inner':
         print(f"Beginning parallelized loop over {n_dichotomies} dichotomies.")
         class_acc_dichs = Parallel(n_jobs=n_cores, verbose=10)(
-            delayed(dich_loop)() for k1 in range(n_dichotomies))
+            delayed(dich_loop)(k1) for k1 in range(n_dichotomies))
     else:
         print(f"Beginning serial loop over {n_dichotomies} dichotomies.")
         class_acc_dichs = []
