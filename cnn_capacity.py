@@ -30,7 +30,7 @@ from typing import *
 import timm
 import models
 import model_output_manager as mom
-import cnn_capacity_params as hp
+import cnn_capacity_params as cp
 import datasets
 
 
@@ -39,46 +39,30 @@ fig_dir = 'figs'
 # rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
+# n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
 n_cores = 8  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 1 # setting to 1 for debugging.
-parallelization_level = 'inner'     # Sets the level at which to do
-                                    # multiprocessing. If 'inner' then the level is
-                                    # in the inner loop over dichotomies. If
-                                    # 'outer' then the level is in the outer
-                                    # loop. Probably best to keep this set to
-                                    # 'inner'.
-# parallelization_level = 'outer'   # over n_inputs and n_channels.
-seeds = [3, 4, 5]
+seeds = [3, 4, 5, 6, 7]
+# seeds = [3, 4, 5]
 
-## Collect parameters in a dictionary so that simulations can be
-## automatically saved and loaded based on the values.
-# hyperparams = hp.random_2d_conv.copy()
-# hyperparams = hp.random_2d_conv_shift2.copy()
-# hyperparams = hp.random_2d_conv_maxpool2.copy() # Note that MaxPool2d spits out
+## Collect parameter sets in a list of dictionaries so that simulations can be
+## automatically saved and loaded based on the values in the dictionaries.
+# param_set = cp.random_2d_conv_exps
+# param_set = cp.random_2d_conv_shift2_exps
+# param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
-# hyperparams = hp.alexnet_imagenet.copy()
-hyperparams = hp.vgg11_cifar10.copy()
+# param_set = cp.alexnet_imagenet_exps
+# param_set = cp.vgg11_cifar10_exps
+param_set = cp.rand_conv_and_vgg_exps
 
-n_inputs = hyperparams['n_inputs']
-del hyperparams['n_inputs']
-layer_idx = hyperparams['layer_idx']
-del hyperparams['layer_idx']
-alphas = hyperparams['alphas']
-n_channels_temp = torch.round(torch.tensor(n_inputs)/alphas).int()
-n_channels_temp -= int(hyperparams['fit_intercept']) 
-n_channels_temp = n_channels_temp.tolist()
-n_channels = []
-[n_channels.append(x) for x in n_channels_temp if x not in n_channels]
-alphas_print = alphas.tolist()
-alphas_print = [round(alpha, 4) for alpha in alphas_print]
-print()
-print(f"Using # samples: {n_inputs}")
-print(f"Using # channels: {n_channels}")
-print(f"Corresponding to alpha values: {alphas_print}")
-print()
-
-del hyperparams['alphas']
+# alphas_print = alphas.tolist()
+# alphas_print = [round(alpha, 4) for alpha in alphas_print]
+# print()
+# print(f"Using # samples: {n_inputs}")
+# print(f"Using # channels: {n_channels}")
+# print(f"Corresponding to alpha values: {alphas_print}")
+# print()
 
 # ImageNet directory
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -253,16 +237,10 @@ def get_capacity(
             elif pool == 'mean':
                 pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
                                                 (pool_x, pool_y)) 
-            net = torch.nn.Sequential(
-                convlayer,
-                torch.nn.ReLU(),
-                pool_layer
-            )
+            layers = [convlayer, torch.nn.ReLU(), pool_layer][:layer_idx+1]
         else:
-            net = torch.nn.Sequential(
-                convlayer,
-                torch.nn.ReLU()
-            )
+            layers = [convlayer, torch.nn.ReLU()][:layer_idx+1]
+        net = torch.nn.Sequential(*layers)
         net.eval()
         def feature_fn(input):
             with torch.no_grad():
@@ -329,8 +307,8 @@ def get_capacity(
         dataset = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
     else:
         raise AttributeError('Unrecognized option for shift_style.')
-    if n_cores == 1 and parallelization_level == 'inner':
-        num_workers = 4 # Fails when combined with joblib.Parallel
+    if n_cores == 1:
+        num_workers = 4
     else:
         num_workers = 0
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
@@ -351,7 +329,7 @@ def get_capacity(
     else:
         base_size = len(dataloader.dataset) * img_size_x * img_size_y
     dset_memsize =  base_size * (n_channels+3) * 4
-    if dset_memsize <= 30e09/n_cores: # Memory usage <= 30 GB roughly.
+    if dset_memsize <= 20e09/n_cores: # Memory usage <= 20 GB roughly.
         train_style = 'whole'
         print("Dataset is <= 30GB -- training with standard SVM.")
     else:
@@ -498,7 +476,7 @@ def get_capacity(
             return acc
 
 
-    if n_cores > 1 and parallelization_level == 'inner':
+    if n_cores > 1:
         print(f"Beginning parallelized loop over {n_dichotomies} dichotomies.")
         class_acc_dichs = Parallel(n_jobs=n_cores, verbose=10)(
             delayed(dich_loop)(k1) for k1 in range(n_dichotomies))
@@ -533,75 +511,49 @@ def cover_theorem(P, N):
 
 ## Run script by calling get_capacity 
 if __name__ == '__main__':
-    param_list = list(itertools.product(
-        n_channels, n_inputs, layer_idx, seeds))
-    # torch.manual_seed(seed)
+    plot_vars = ['n_channels', 'n_inputs', 'layer_idx']
 
     results_table = pd.DataFrame()
-    if n_cores > 1 and parallelization_level == 'outer':
-        capacities = Parallel(n_jobs=n_cores)(
-            delayed(get_capacity)(*p, **hyperparams) for p in param_list)
-        for k1, (n_channel, n_input, layer, seed) in enumerate(param_list):
-            capacity = capacities[k1]
-            if hyperparams['fit_intercept']:
-                alpha = n_input / (n_channel + 1)
-            else:
-                alpha = n_input / n_channel
+    for seed in seeds:
+        for params in param_set:
+            n_input = params['n_inputs']
+            n_channel = params['n_channels']
+            net_style = params['net_style']
+            layer = params['layer_idx']
+            offset = int(params['fit_intercept'])
+            alpha = n_input / (n_channel + offset)
+            capacity = get_capacity(seed=seed, **params)
             cover_capacity = cover_theorem(n_input, n_channel)
-            d = pd.DataFrame(
-                {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
-                'alpha': alpha, 'layer': layer, 'capacity': capacity},
-                index=[0])
-            results_table = results_table.append(d, ignore_index=True)
-            d = pd.DataFrame(
-                {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
-                'alpha': alpha, 'layer': 'theory',
-                'capacity': cover_capacity}, index=[0])
-            results_table = results_table.append(d, ignore_index=True)
-    else:
-        for n_channel, n_input, layer, seed in param_list:
-            if hyperparams['fit_intercept']:
-                alpha = n_input / (n_channel + 1)
-            else:
-                alpha = n_input / n_channel
-            capacity = get_capacity(n_channel, n_input, seed,
-                                    layer_idx=layer, **hyperparams)
-            cover_capacity = cover_theorem(n_input, n_channel)
-            d = pd.DataFrame(
-                {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
-                'alpha': alpha, 'layer': layer, 'capacity': capacity},
-                index=[0])
-            results_table = results_table.append(d, ignore_index=True)
-            d = pd.DataFrame(
-                {'seed': seed,'n_channel': n_channel, 'n_input': n_input,
-                'alpha': alpha, 'layer': 'theory',
-                'capacity': cover_capacity}, index=[0])
-            results_table = results_table.append(d, ignore_index=True)
+            d1 = {'seed': seed, 'alpha': alpha, 'n_inputs': n_input,
+                  'n_channels': n_channel, 'n_channels_offset':
+                  n_channel + offset, 'fit_intercept': params['fit_intercept'],
+                  'layer': layer, 'net_style': net_style, 'capacity': capacity}
+            # for var in plot_vars:
+                # d1[var] = params[var]
+            d1 = pd.DataFrame(d1, index=[0])
+            results_table = results_table.append(d1, ignore_index=True)
 
-    # for intcol in ('seed', 'n_channel', 'n_input'):
-        # results_table[intcol] = results_table[intcol].astype(int)
     for catcol in ('layer',):
         results_table[catcol] = results_table[catcol].astype('category')
 
     os.makedirs('figs', exist_ok=True)
     results_table.to_pickle('figs/most_recent.pkl')
-    alpha_table = results_table.drop(columns=['n_channel', 'n_input'])
-    alpha_table_layer = alpha_table[
-        alpha_table['layer'] != 'theory']
-    alpha_table_theory = alpha_table[
-        alpha_table['layer'] == 'theory']
-    alpha_table_theory = alpha_table_theory[
-        alpha_table_theory['seed']==seeds[0]]
-    # alpha_table = results_table.drop(columns=['n_channel', 'n_input'])
+    alpha_table = results_table.drop(
+        columns=['n_channels', 'n_inputs', 'n_channels_offset',
+                 'fit_intercept'])
     fig, ax = plt.subplots()
-    # hue_order = (*layer_idx, 'theory')
-    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table_layer,
-                 hue='layer')
-    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table_theory,
-                 linestyle='dashed', color='black')
-    # alpha_table_theory = alpha_table_theory.drop(columns=['layer'])
-    # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table_theory,
-                 # style=True, dashes=[(2,2)], color='black')
+    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 hue='layer', style='net_style')
+    nmin = results_table['n_channels_offset'].min()
+    nmax = results_table['n_channels_offset'].max()
+    pmin = results_table['n_inputs'].min()
+    pmax = results_table['n_inputs'].max()
+    alphamin = results_table['alpha'].min()
+    alphamax = results_table['alpha'].max()
+    cover_cap = {p/n: cover_theorem(p, n) for n in range(nmin, nmax+1)
+                for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
+    ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='--',
+           color='black')
     ax.set_ylim([-.01, 1.01])
     fig.savefig('figs/most_recent.pdf')
 
