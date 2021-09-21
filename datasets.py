@@ -52,6 +52,7 @@ class FakeData(VisionDataset):
         rng_state = torch.get_rng_state()
         torch.manual_seed(index + self.random_offset)
         img = torch.randn(*self.image_size)
+        # img = 2*torch.rand(*self.image_size)-1
         target = torch.randint(0, self.num_classes, size=(1,), dtype=torch.long)[0]
         torch.set_rng_state(rng_state)
 

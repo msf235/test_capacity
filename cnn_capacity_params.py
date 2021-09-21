@@ -9,6 +9,22 @@ def alphas_to_channels(alphas, n_inputs, fit_intercept):
     [n_channels.append(x) for x in n_channels_temp if x not in n_channels]
     return n_channels
 
+def exps_channels_and_layers(param_base, n_channels, layers=None):
+    exps = []
+    for n_channel in n_channels:
+        if layers is not None:
+            for layer in layers:
+                temp = param_base.copy()
+                temp['layer_idx'] = layer
+                temp['n_channels'] = n_channel
+                exps.append(temp)
+        else:
+            temp = param_base.copy()
+            temp['n_channels'] = n_channel
+            exps.append(temp)
+            
+    return exps
+
 # Random CNN layer
 random_2d_conv = dict(
 n_dichotomies = 100, # Number of random dichotomies to test
@@ -49,12 +65,6 @@ n_channels = alphas_to_channels(
     alphas, random_2d_conv['n_inputs'],
     int(random_2d_conv['fit_intercept']))
 random_2d_conv_exps = []
-for n_channel in n_channels:
-    for layer in [1, 2]:
-        temp = random_2d_conv.copy()
-        temp['layer_idx'] = layer
-        temp['n_channels'] = n_channel
-        random_2d_conv_exps.append(temp)
 
 # Random CNN layer with 2 pixel shifts
 random_2d_conv_shift2 = random_2d_conv.copy()
@@ -66,28 +76,37 @@ alphas=torch.linspace(3.0, 8.0, 10)
 n_channels = alphas_to_channels(
     alphas, random_2d_conv_shift2['n_inputs'],
     int(random_2d_conv_shift2['fit_intercept']))
-random_2d_conv_shift2_exps = []
-for n_channel in n_channels:
-    temp = random_2d_conv_shift2.copy()
-    temp['n_channels'] = n_channel
-    random_2d_conv_shift2_exps.append(temp)
+random_2d_conv_shift2_exps = exps_channels_and_layers(
+    random_2d_conv_shift2, n_channels)
 
 ## One-dimensional convolution.
 random_1d_conv = random_2d_conv.copy()
-random_1d_conv['img_size_y'] = 40
+random_1d_conv['img_size_x'] = 40
 random_1d_conv['img_size_y'] = 1
 random_1d_conv['fit_intercept'] = False
-random_1d_conv['layer_idx'] = 1
-random_1d_conv['max_epochs'] = 1000
+random_1d_conv['layer_idx'] = 0
+random_1d_conv['batch_size'] = 50000
+# random_1d_conv['max_epochs'] = 1000
+# random_1d_conv['max_epochs'] = 100000
+# random_1d_conv['max_epochs'] = 10000
+random_1d_conv['max_epochs'] = 4000
+random_1d_conv['pool_over_group'] = True
+# random_1d_conv['pool_over_group'] = False
+random_1d_conv['img_channels'] = 100
+# random_1d_conv['img_channels'] = 3
 alphas = torch.linspace(0.8, 3.0, 10)
 n_channels = alphas_to_channels(
     alphas, random_1d_conv['n_inputs'],
     int(random_1d_conv['fit_intercept']))
-random_1d_conv_exps = []
-for n_channel in n_channels:
-    temp = random_1d_conv.copy()
-    temp['n_channels'] = n_channel
-    random_1d_conv_exps.append(temp)
+random_1d_conv_exps = exps_channels_and_layers(
+    random_1d_conv, n_channels)
+
+## Random inputs
+randpoint = random_1d_conv.copy()
+randpoint['net_style'] = 'randpoints'
+n_channels = alphas_to_channels(
+    alphas, randpoint['n_inputs'], int(randpoint['fit_intercept']))
+randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
 
 # Random CNN layer with max pooling
 random_2d_conv_maxpool2 = random_2d_conv.copy()
@@ -102,11 +121,8 @@ alphas=torch.linspace(.2, 1.5, 10)
 n_channels = alphas_to_channels(
     alphas, random_2d_conv_maxpool2['n_inputs'],
     int(random_2d_conv_maxpool2['fit_intercept']))
-random_2d_conv_maxpool2_exps = []
-for n_channel in n_channels:
-    temp = random_2d_conv_maxpool2.copy()
-    temp['n_channels'] = n_channel
-    random_2d_conv_maxpool2_exps.append(temp)
+random_2d_conv_maxpool2_exps = exps_channels_and_layers(
+    random_2d_conv_maxpool2, n_channels)
 
 ## Grid cell net
 grid_2d_conv = dict(

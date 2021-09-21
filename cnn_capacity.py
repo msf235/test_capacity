@@ -36,20 +36,22 @@ import datasets
 
 output_dir = 'output'
 fig_dir = 'figs'
-rerun = True # If True, rerun the simulation even if a matching simulation is
+# rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-# rerun = False
+rerun = False
 n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 7  
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
-# seeds = [3, 4, 5]
-seeds = [3]
+seeds = [3, 4, 5]
+# seeds = [3]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
 # param_set = cp.random_2d_conv_exps
-param_set = cp.random_1d_conv_exps
+# param_set = cp.random_1d_conv_exps
+# param_set = cp.randpoint_exps
+param_set = cp.randpoint_exps + cp.random_1d_conv_exps
 # param_set = cp.random_2d_conv_shift2_exps
 # param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
@@ -78,7 +80,7 @@ class HingeLoss(torch.nn.Module):
 def get_capacity(
     n_channels, n_inputs, seed=3, n_dichotomies=100, max_epochs=500,
     max_epochs_no_imp=100, improve_tol=1e-3, batch_size=256, img_size_x=10,
-    img_size_y=10, net_style='rand_conv', layer_idx=0,
+    img_size_y=10, img_channels=3, net_style='rand_conv', layer_idx=0,
     dataset_name='gaussianrandom', shift_style='2d', shift_x=1, shift_y=1,
     pool_over_group=False, pool=None, pool_x=None, pool_y=None,
     fit_intercept=True, center_response=True):
@@ -108,8 +110,8 @@ def get_capacity(
         improvement
     # improve_tol : 
 		Not implemented. The tolerance for improvement.
-    batch_size : int
-		Batch size if training with SGD
+    batch_size : Optional[int]
+		Batch size. If None, this is set to the size of the dataset.
     img_size_x : int
 		Size of image x dimension.
     img_size_y : int
@@ -223,11 +225,12 @@ def get_capacity(
             h = torch.cat(hlist, dim=-1)
             return h
     elif net_style == 'rand_conv':
-        convlayer = torch.nn.Conv2d(3, n_channels, (img_size_x, img_size_y),
+        convlayer = torch.nn.Conv2d(img_channels, n_channels,
+                                    (img_size_x, img_size_y),
                             padding='same', padding_mode='circular',
                             bias=False)
-        # torch.nn.init.xavier_normal_(convlayer.weight)
-        torch.nn.init.normal_(convlayer.weight)
+        torch.nn.init.xavier_normal_(convlayer.weight)
+        # torch.nn.init.normal_(convlayer.weight)
         # torch.nn.init.orthogonal_(convlayer.weight)
         layers = [convlayer, torch.nn.ReLU()]
         if pool is not None:
@@ -261,7 +264,7 @@ def get_capacity(
     if net_style == 'randpoints':
         inp_channels = n_channels
     else:
-        inp_channels = 3
+        inp_channels = img_channels
     if dataset_name.lower() == 'imagenet':
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                                  std=[0.229, 0.224, 0.225])
@@ -321,17 +324,6 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
-    DFTreal = np.zeros((N,N))
-    # dx = n/(n-1)
-    # xx = np.arange(0, n, dx)
-    xx = np.arange(0, N)
-    # xx = np.linspace(0, n-1/n, n+1)
-    for i0, k in enumerate(range(0,N,2)):
-        DFTreal[:, k] = np.cos(2*i0*math.pi*xx/N)
-    for i0, k in enumerate(range(1,N,2)):
-        DFTreal[:, k] = np.sin(2*(i0+1)*math.pi*xx/N)
-    DFTreal = DFTreal / np.linalg.norm(DFTreal, axis=0)
-    # DFT = scipy.linalg.dft(N, scale='sqrtn')
     ## Get the memory size of the entire dataset and network response
     #  in megabytes
     if pool_over_group:
@@ -347,6 +339,7 @@ def get_capacity(
         print("Dataset exceeds 30GB -- training with batches.")
         print(f"The number of batches per epoch is {len(dataloader)}")
     train_style = 'whole'
+    # train_style = 'batched'
 
     # # %%  Test data sampling
     # ds = dataloader.dataset
@@ -376,9 +369,9 @@ def get_capacity(
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         while len(set(class_random_labels.tolist())) < 2:
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
-        perceptron = linear_model.SGDClassifier(fit_intercept=fit_intercept,
-                                               alpha=1e-10)
-        Pt = np.ones((N, 1))
+        fitter = linear_model.SGDClassifier(tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
+                               max_iter=max_epochs)
+        Pt = np.ones((N, 1)) / N**.5
         if train_style == 'batched':
             # print(f'Training using batched SGD')
             # curr_best_loss = 100.0
@@ -392,6 +385,7 @@ def get_capacity(
                     if pool_over_group:
                         hrs = h.reshape(*h.shape[:2], -1)
                         centroids = hrs @ Pt
+                        centroids = centroids.unique(dim=0)
                         X = centroids.reshape(centroids.shape[0], -1).numpy().astype(float)
                         Y = np.array(class_random_labels)
                     else:
@@ -422,16 +416,25 @@ def get_capacity(
                 ds = dataloader.dataset.core_dataset
                 n = len(ds)
                 inputs, labels = zip(*[ds[k] for k in range(n)])
-                del labels # Free up memory
+                # del labels # Free up memory
                 inputs = torch.stack(inputs)
                 h = feature_fn(inputs).numpy()
-                del inputs # Free up memory
+                # del inputs # Free up memory
+                # core_idx_unique = core_idx.unique()
+                # num_pnts = len(core_idx_unique)
+                # havg = torch.zeros(num_pnts, *h.shape[1], 1)
+                # for k1, idx in enumerate(core_idx_unique):
+                    # loc = core_idx == idx
+                    # havg[k3] = (h[loc]).mean()
+                # del h
+                # hrs = havg.reshape(*havg.shape[:2], -1)
                 hrs = h.reshape(*h.shape[:2], -1)
-                del h # Free up memory
+                # del h
                 centroids = hrs @ Pt
-                del hrs # Free up memory
+                # del hrs # Free up memory
                 X = centroids.reshape(centroids.shape[0], -1)
                 Y = np.array(class_random_labels)
+                # print(Y)
             else:
                 n = len(dataloader.dataset)
                 inputs, labels, core_idx = zip(
@@ -439,8 +442,7 @@ def get_capacity(
                 del labels # Free up memory
                 core_idx = list(core_idx)
                 inputs = torch.stack(inputs)
-                hnp = feature_fn(inputs).numpy().squeeze()
-                hnp = hnp @ DFTreal
+                hnp = feature_fn(inputs).numpy()
                 del inputs # Free up memory
                 X = hnp.reshape(hnp.shape[0], -1)
                 del hnp # Free up memory and ensure X is contiguous
@@ -474,15 +476,18 @@ def get_capacity(
                                   # fit_intercept=fit_intercept)
             # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=60.,
                                   # fit_intercept=fit_intercept)
-            fitter = svm.LinearSVC(tol=1e-8, C=40., fit_intercept=fit_intercept,
-                                   max_iter=max_epochs)
+            # fitter = svm.LinearSVC(tol=1e-18, C=1e16, fit_intercept=fit_intercept,
+                                   # max_iter=max_epochs)
             ## Debug code for checking rank of data 
             # Xmc = X - np.mean(X, axis=0)
             # C = X.T @ Xmc
             # ew, ev = np.linalg.eigh(C)
-            fitter.fit(X, Y)
+            # fitter.fit(X, Y)
+            for k2 in range(max_epochs):
+                fitter.partial_fit(X, Y, classes=(-1,1))
             # print(Y)
             acc = fitter.score(X, Y)
+            # breakpoint()
             # fig, ax = plt.subplots()
             # ax.scatter(X[:,0], X[:,1], c=Y)
             # plt.show()
@@ -560,8 +565,10 @@ if __name__ == '__main__':
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
     fig, ax = plt.subplots()
+    # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 # hue='layer', style=style)
     sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 hue='layer', style=style)
+                 hue=style)
     nmin = results_table['n_channels_offset'].min()
     nmax = results_table['n_channels_offset'].max()
     pmin = results_table['n_inputs'].min()
@@ -570,8 +577,9 @@ if __name__ == '__main__':
     alphamax = results_table['alpha'].max()
     cover_cap = {p/n: cover_theorem(p, n) for n in range(nmin, nmax+1)
                 for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
-    ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='--',
-           color='black')
+    ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='dotted',
+           color='black', label='theory')
+    ax.legend()
     ax.set_ylim([-.01, 1.01])
     fig.savefig('figs/most_recent.pdf')
 
