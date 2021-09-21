@@ -36,33 +36,28 @@ import datasets
 
 output_dir = 'output'
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-rerun = False
-# n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
-n_cores = 8  # Number of processor cores to use for multiprocessing. Recommend
+# rerun = False
+n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+# n_cores = 7  
 # n_cores = 1 # setting to 1 for debugging.
-seeds = [3, 4, 5, 6, 7]
+# seeds = [3, 4, 5, 6, 7]
 # seeds = [3, 4, 5]
+seeds = [3]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
 # param_set = cp.random_2d_conv_exps
+param_set = cp.random_1d_conv_exps
 # param_set = cp.random_2d_conv_shift2_exps
 # param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
+# param_set = cp.grid_2d_conv_exps
 # param_set = cp.alexnet_imagenet_exps
 # param_set = cp.vgg11_cifar10_exps
-param_set = cp.rand_conv_and_vgg_exps
-
-# alphas_print = alphas.tolist()
-# alphas_print = [round(alpha, 4) for alpha in alphas_print]
-# print()
-# print(f"Using # samples: {n_inputs}")
-# print(f"Using # channels: {n_channels}")
-# print(f"Corresponding to alpha values: {alphas_print}")
-# print()
+# param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
 # ImageNet directory
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -76,6 +71,7 @@ class HingeLoss(torch.nn.Module):
         hinge_loss = 1 - torch.mul(output, target)
         hinge_loss[hinge_loss < 0] = 0
         return hinge_loss.mean()
+
 
 # % Main function for capacity. This function is memoized based on its
 # parameters.
@@ -213,6 +209,7 @@ def get_capacity(
     elif net_style == 'grid':
         convlayer = torch.nn.Conv2d(3, n_channels, 4, bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
+        # torch.nn.init.normal_(convlayer.weight)
         net = torch.nn.Sequential(
             convlayer,
             torch.nn.ReLU(),
@@ -229,7 +226,10 @@ def get_capacity(
         convlayer = torch.nn.Conv2d(3, n_channels, (img_size_x, img_size_y),
                             padding='same', padding_mode='circular',
                             bias=False)
-        torch.nn.init.xavier_normal_(convlayer.weight)
+        # torch.nn.init.xavier_normal_(convlayer.weight)
+        torch.nn.init.normal_(convlayer.weight)
+        # torch.nn.init.orthogonal_(convlayer.weight)
+        layers = [convlayer, torch.nn.ReLU()]
         if pool is not None:
             if pool == 'max':
                 pool_layer = torch.nn.MaxPool2d((pool_x, pool_y),
@@ -237,9 +237,8 @@ def get_capacity(
             elif pool == 'mean':
                 pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
                                                 (pool_x, pool_y)) 
-            layers = [convlayer, torch.nn.ReLU(), pool_layer][:layer_idx+1]
-        else:
-            layers = [convlayer, torch.nn.ReLU()][:layer_idx+1]
+            layers.append(pool_layer)
+        layers = layers[:layer_idx+1]
         net = torch.nn.Sequential(*layers)
         net.eval()
         def feature_fn(input):
@@ -322,6 +321,17 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
+    DFTreal = np.zeros((N,N))
+    # dx = n/(n-1)
+    # xx = np.arange(0, n, dx)
+    xx = np.arange(0, N)
+    # xx = np.linspace(0, n-1/n, n+1)
+    for i0, k in enumerate(range(0,N,2)):
+        DFTreal[:, k] = np.cos(2*i0*math.pi*xx/N)
+    for i0, k in enumerate(range(1,N,2)):
+        DFTreal[:, k] = np.sin(2*(i0+1)*math.pi*xx/N)
+    DFTreal = DFTreal / np.linalg.norm(DFTreal, axis=0)
+    # DFT = scipy.linalg.dft(N, scale='sqrtn')
     ## Get the memory size of the entire dataset and network response
     #  in megabytes
     if pool_over_group:
@@ -336,6 +346,7 @@ def get_capacity(
         train_style = 'batched'
         print("Dataset exceeds 30GB -- training with batches.")
         print(f"The number of batches per epoch is {len(dataloader)}")
+    train_style = 'whole'
 
     # # %%  Test data sampling
     # ds = dataloader.dataset
@@ -428,7 +439,8 @@ def get_capacity(
                 del labels # Free up memory
                 core_idx = list(core_idx)
                 inputs = torch.stack(inputs)
-                hnp = feature_fn(inputs).numpy()
+                hnp = feature_fn(inputs).numpy().squeeze()
+                hnp = hnp @ DFTreal
                 del inputs # Free up memory
                 X = hnp.reshape(hnp.shape[0], -1)
                 del hnp # Free up memory and ensure X is contiguous
@@ -458,9 +470,11 @@ def get_capacity(
                 # fitter.fit(centroids_f_rs, Yc)
                 # acc = fitter.score(centroids_f_rs, Yc)
 
-            # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
+            # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=60.,
                                   # fit_intercept=fit_intercept)
-            fitter = svm.LinearSVC(C=20., fit_intercept=fit_intercept,
+            # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=60.,
+                                  # fit_intercept=fit_intercept)
+            fitter = svm.LinearSVC(tol=1e-8, C=40., fit_intercept=fit_intercept,
                                    max_iter=max_epochs)
             ## Debug code for checking rank of data 
             # Xmc = X - np.mean(X, axis=0)
@@ -536,6 +550,10 @@ if __name__ == '__main__':
     for catcol in ('layer',):
         results_table[catcol] = results_table[catcol].astype('category')
 
+    if len(results_table['net_style'].unique()) > 1:
+        style = 'net_style'
+    else:
+        style = None
     os.makedirs('figs', exist_ok=True)
     results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(
@@ -543,7 +561,7 @@ if __name__ == '__main__':
                  'fit_intercept'])
     fig, ax = plt.subplots()
     sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 hue='layer', style='net_style')
+                 hue='layer', style=style)
     nmin = results_table['n_channels_offset'].min()
     nmax = results_table['n_channels_offset'].max()
     pmin = results_table['n_inputs'].min()
