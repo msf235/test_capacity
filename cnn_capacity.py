@@ -36,12 +36,12 @@ import datasets
 
 output_dir = 'output'
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-rerun = False
-n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+# rerun = False
+# n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 7  
-# n_cores = 1 # setting to 1 for debugging.
+n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
 # seeds = [3]
@@ -147,6 +147,8 @@ def get_capacity(
 		Size in pixels of pool in y direction. Set to None if pool is None.
     fit_intercept : bool 
 		Whether or not to fit the intercept in the linear classifier.
+        This currently throws an error when set to True since I haven't
+        got the intercept working with perceptron_style = 'efficient' yet.
     center_response : bool 
         Whether or not to mean center each representation response.
     seed : int
@@ -180,6 +182,8 @@ def get_capacity(
         if pool_over_group:
             raise AttributeError("""perceptron_style=efficient not implemented
                                 with group pooling.""")
+    if fit_intercept:
+        raise AttributeError("fit_intercept=True not currently implemented.")
     torch.manual_seed(seed)
 
     ## Someday I may choose to use feature hooks.
@@ -318,7 +322,12 @@ def get_capacity(
     else:
         raise AttributeError('dataset_name option not recognized')
 
-    if pool_over_group or perceptron_style == 'efficient':
+    if n_cores == 1:
+        num_workers = 4
+    else:
+        num_workers = 0
+
+    if pool_over_group:
         dataset = core_dataset
     elif shift_style == '1d':
         dataset = datasets.ShiftDataset1D(core_dataset, shift_y)
@@ -326,32 +335,23 @@ def get_capacity(
         dataset = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
     else:
         raise AttributeError('Unrecognized option for shift_style.')
-    datasetfull = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
-    inputsfull = torch.stack([x[0] for x in datasetfull])
-    coreidxfull = [x[2] for x in datasetfull]
-    if n_cores == 1:
-        num_workers = 4
-    else:
-        num_workers = 0
+    if perceptron_style == 'efficient':
+        datasetfull = dataset
+        dataset = core_dataset
+        inputsfull = torch.stack([x[0] for x in datasetfull])
+        coreidxfull = [x[2] for x in datasetfull]
+        dataloaderfull = torch.utils.data.DataLoader(
+            datasetfull, batch_size=batch_size, num_workers=num_workers,
+            shuffle=False)
+
     if batch_size is None or batch_size == len(dataset):
         batch_size = len(dataset)
+        inputs = torch.stack([x[0] for x in dataset])
         if pool_over_group or perceptron_style == 'efficient':
-            inputs = torch.stack([x[0] for x in dataset])
             core_idx = list(range(len(dataset)))
         else:
-            inputs, core_idx = zip(*[(x[0], x[2]) for x in dataset])
-            inputs = torch.stack(inputs)
-            core_idx = list(core_idx)
-        # class WholeDataLoader:
-            # def __iter__(self):
-                # return self
-            # def __next__(self):
-                # return inputs, None
-        # dataloader = WholeDataLoader()
+            core_idx = [x[2] for x in dataset]
         dataloader = [(inputs, None, core_idx)]
-        # def dataloader_fn():
-            # yield inputs, None
-        # dataloader = dataloader_fn()
     else:
         dataloader = torch.utils.data.DataLoader(dataset,
                                                  batch_size=batch_size,
@@ -368,6 +368,7 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
+    P = np.ones((1, N)) / N
     Pt = np.ones((N, 1)) / N
     Pfullt = np.ones((N, N)) / N
     
@@ -409,7 +410,6 @@ def get_capacity(
         perceptron = linear_model.SGDClassifier(
             tol=1e-18, alpha=1e-6, fit_intercept=fit_intercept,
             max_iter=max_epochs)
-        perceptron2 = linear_model.SGDClassifier(fit_intercept=fit_intercept)
             # curr_best_loss = 100.0
             # num_no_imp = 0
         if batch_size == len(dataset):
@@ -417,6 +417,8 @@ def get_capacity(
             core_idx = dataloader[0][2]
             h = feature_fn(inputs)
             hfull = feature_fn(inputsfull)
+            Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
+            Yfull = class_random_labels[coreidxfull].numpy()
             if pool_over_group or perceptron_style == 'efficient':
                 hrs = h.reshape(*h.shape[:2], -1)
                 centroids = hrs @ Pt
@@ -429,11 +431,9 @@ def get_capacity(
                 perceptron.partial_fit(X, Y, classes=(-1, 1))
                 if perceptron_style == 'efficient':
                     wtemp = perceptron.coef_.copy()
-                    wtemp2 = wtemp.T @ np.ones((1, N)) / N
-                    wtemp3 = wtemp2.reshape(-1)
-                    Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
-                    Yfull = class_random_labels[coreidxfull].numpy()
-                    curr_avg_acc = score(wtemp3, Xfull, Yfull)
+                    wtemp = wtemp.T @ P
+                    wtemp = wtemp.reshape(-1)
+                    curr_avg_acc = score(wtemp, Xfull, Yfull)
                 else:
                     curr_avg_acc = perceptron.score(X, Y).item()
                 if curr_avg_acc == 1.0:
@@ -442,7 +442,7 @@ def get_capacity(
             for epoch in range(max_epochs):
                 losses_epoch = []
                 class_acc_epoch = []
-                for k2, data in enumerate(dataloader):
+                for k1, data in enumerate(dataloader):
                     inputs = data[0]
                     h = feature_fn(inputs)
                     if pool_over_group:
@@ -452,12 +452,22 @@ def get_capacity(
                         X = centroids.reshape(centroids.shape[0], -1).numpy()
                         Y = np.array(class_random_labels)
                     else:
-                        core_idx = data[2]
+                        core_idx_batch = data[2]
                         X = h.reshape(h.shape[0], -1).numpy()
-                        Y = class_random_labels[core_idx].numpy()
+                        Y = class_random_labels[core_idx_batch].numpy()
                     perceptron.partial_fit(X, Y, classes=(-1, 1))
                     class_acc_epoch.append(perceptron.score(X, Y).item())
                     curr_avg_acc = sum(class_acc_epoch)/len(class_acc_epoch)
+                if perceptron_style == 'efficient':
+                    for k1, data in enumerate(dataloaderfull):
+                        core_idx_batch = data[2]
+                        hfull = feature_fn(data[0])
+                        Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
+                        Yfull = class_random_labels[core_idx_batch].numpy()
+                        wtemp = perceptron.coef_.copy()
+                        wtemp = wtemp.T @ P
+                        wtemp = wtemp.reshape(-1)
+                        curr_avg_acc = score(wtemp, Xfull, Yfull)
 
                     # perc_compl = round(100*(k2/len(dataloader)))
                     # if process_id is None:
