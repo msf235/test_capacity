@@ -82,7 +82,8 @@ def get_capacity(
     max_epochs_no_imp=100, improve_tol=1e-3, batch_size=256, img_size_x=10,
     img_size_y=10, img_channels=3, net_style='rand_conv', layer_idx=0,
     dataset_name='gaussianrandom', shift_style='2d', shift_x=1, shift_y=1,
-    pool_over_group=False, pool=None, pool_x=None, pool_y=None,
+    pool_over_group=False, perceptron_style='standard',
+    pool=None, pool_x=None, pool_y=None,
     fit_intercept=True, center_response=True):
     """Take number of channels of response (n_channels) and number of input
     responses (n_inputs) and a set of hyperparameters and return the capacity
@@ -133,6 +134,10 @@ def get_capacity(
     pool_over_group : bool 
         Whether or not to average (pool) the representation over the group
         before fitting the linear classifier.
+    perceptron_style : str {'efficient', 'standard'}
+        How to train the output weights. If 'efficient' then use the trick
+        of finding a separating hyperplane for the identity group operations
+        and then applying the average group projector to this hyperplane.
     pool : Optional[str] 
 		Pooling to use for representation. Options are None, 'max', and 'mean'.
         Only currently implemented for net_style='rand_conv'.
@@ -165,6 +170,16 @@ def get_capacity(
         except FileNotFoundError:
             pass
 
+    if perceptron_style == 'efficient':
+        if shift_x != 1 or shift_y != 1:
+            raise AttributeError("""perceptron_style=efficient not implemented
+                                for shifts of more than one position.""")
+        if pool:
+            raise AttributeError("""perceptron_style=efficient not implemented
+                                with local pooling.""")
+        if pool_over_group:
+            raise AttributeError("""perceptron_style=efficient not implemented
+                                with group pooling.""")
     torch.manual_seed(seed)
 
     ## Someday I may choose to use feature hooks.
@@ -303,7 +318,7 @@ def get_capacity(
     else:
         raise AttributeError('dataset_name option not recognized')
 
-    if pool_over_group:
+    if pool_over_group or perceptron_style == 'efficient':
         dataset = core_dataset
     elif shift_style == '1d':
         dataset = datasets.ShiftDataset1D(core_dataset, shift_y)
@@ -311,13 +326,16 @@ def get_capacity(
         dataset = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
     else:
         raise AttributeError('Unrecognized option for shift_style.')
+    datasetfull = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
+    inputsfull = torch.stack([x[0] for x in datasetfull])
+    coreidxfull = [x[2] for x in datasetfull]
     if n_cores == 1:
         num_workers = 4
     else:
         num_workers = 0
     if batch_size is None or batch_size == len(dataset):
         batch_size = len(dataset)
-        if pool_over_group:
+        if pool_over_group or perceptron_style == 'efficient':
             inputs = torch.stack([x[0] for x in dataset])
             core_idx = list(range(len(dataset)))
         else:
@@ -350,8 +368,9 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
-
-
+    Pt = np.ones((N, 1)) / N
+    Pfullt = np.ones((N, N)) / N
+    
     # # %%  Test data sampling
     # ds = dataloader.dataset
     # def no(k): Get network output
@@ -369,6 +388,10 @@ def get_capacity(
 
     loss_fn = HingeLoss()
 
+    def score(w, X, Y):
+        Ytilde = X @ w
+        return np.mean(np.sign(Ytilde) == np.sign(Y))
+
     def class_acc(outs, targets):
         correct = 1.0*(outs * random_labels > 0)
         return torch.mean(correct)
@@ -380,20 +403,23 @@ def get_capacity(
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         while len(set(class_random_labels.tolist())) < 2:
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
+        # perceptron = linear_model.SGDClassifier(
+            # tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
+            # max_iter=max_epochs)
         perceptron = linear_model.SGDClassifier(
-            tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
+            tol=1e-18, alpha=1e-6, fit_intercept=fit_intercept,
             max_iter=max_epochs)
-        Pt = np.ones((N, 1)) / N**.5
+        perceptron2 = linear_model.SGDClassifier(fit_intercept=fit_intercept)
             # curr_best_loss = 100.0
             # num_no_imp = 0
         if batch_size == len(dataset):
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
             h = feature_fn(inputs)
-            if pool_over_group:
+            hfull = feature_fn(inputsfull)
+            if pool_over_group or perceptron_style == 'efficient':
                 hrs = h.reshape(*h.shape[:2], -1)
                 centroids = hrs @ Pt
-                # centroids = centroids.unique(dim=0)
                 X = centroids.reshape(centroids.shape[0], -1).numpy()
                 Y = np.array(class_random_labels)
             else:
@@ -401,10 +427,17 @@ def get_capacity(
                 Y = class_random_labels[core_idx].numpy()
             for epoch in range(max_epochs):
                 perceptron.partial_fit(X, Y, classes=(-1, 1))
-                curr_avg_acc = perceptron.score(X, Y).item()
+                if perceptron_style == 'efficient':
+                    wtemp = perceptron.coef_.copy()
+                    wtemp2 = wtemp.T @ np.ones((1, N)) / N
+                    wtemp3 = wtemp2.reshape(-1)
+                    Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
+                    Yfull = class_random_labels[coreidxfull].numpy()
+                    curr_avg_acc = score(wtemp3, Xfull, Yfull)
+                else:
+                    curr_avg_acc = perceptron.score(X, Y).item()
                 if curr_avg_acc == 1.0:
                     break
-
         else:
             for epoch in range(max_epochs):
                 losses_epoch = []
@@ -485,7 +518,7 @@ def get_capacity(
 
     if n_cores > 1:
         print(f"Beginning parallelized loop over {n_dichotomies} dichotomies.")
-        class_acc_dichs = Parallel(n_jobs=n_cores, verbose=10)(
+        class_acc_dichs = Parallel(n_jobs=n_cores, batch_size=1, verbose=10)(
             delayed(dich_loop)(k1) for k1 in range(n_dichotomies))
     else:
         print(f"Beginning serial loop over {n_dichotomies} dichotomies.")

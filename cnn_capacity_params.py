@@ -29,7 +29,7 @@ def exps_channels_and_layers(param_base, n_channels, layers=None):
 random_2d_conv = dict(
 n_dichotomies = 100, # Number of random dichotomies to test
 n_inputs = 40, # Number of input samples to test
-max_epochs = 500, # Maximum number of epochs.
+max_epochs = 8000, # Maximum number of epochs.
 # max_epochs_no_imp = 100, # Not implemented. Training will stop after
                            # this number of epochs without improvement
 # improve_tol = 1e-3, # Not implemented. The tolerance for improvement.
@@ -45,6 +45,7 @@ net_style = 'rand_conv', # Random convolutional layer.
                             # classifier is working alright.
 # dataset_name = 'imagenet', # Use imagenet inputs.
 dataset_name = 'gaussianrandom', # Use Gaussian random inputs.
+perceptron_style = 'efficient',
 # shift_style = '1d', # Take input 1d shifts (shift in only x dimension).
 shift_style = '2d', # Use input shifts in both x and y dimensions
 shift_x = 1, # Number of pixels by which to shift in the x direction
@@ -54,9 +55,9 @@ pool_over_group = False, # group before fitting the linear classifier.
 pool='max', 
 pool_x = 2,
 pool_y = 2,
-fit_intercept = True, # Whether or not to fit the intercept in the linear
+# fit_intercept = True, # Whether or not to fit the intercept in the linear
                       # classifier
-# fit_intercept = False,
+fit_intercept = False,
 # center_response = True, # Whether or not to mean center each representation
 center_response = False,  # response 
 )
@@ -64,7 +65,8 @@ alphas = torch.linspace(0.8, 3.0, 10)
 n_channels = alphas_to_channels(
     alphas, random_2d_conv['n_inputs'],
     int(random_2d_conv['fit_intercept']))
-random_2d_conv_exps = []
+random_2d_conv_exps = exps_channels_and_layers(
+    random_2d_conv, n_channels, [1,2])
 
 # Random CNN layer with 2 pixel shifts
 random_2d_conv_shift2 = random_2d_conv.copy()
@@ -86,12 +88,13 @@ random_1d_conv['img_size_y'] = 1
 random_1d_conv['fit_intercept'] = False
 random_1d_conv['layer_idx'] = 0
 random_1d_conv['batch_size'] = None
+random_1d_conv['perceptron_style'] = 'efficient'
 # random_1d_conv['max_epochs'] = 1000
-# random_1d_conv['max_epochs'] = 100000
 # random_1d_conv['max_epochs'] = 10000
 random_1d_conv['max_epochs'] = 4000
 # random_1d_conv['pool_over_group'] = True
 random_1d_conv['pool_over_group'] = False
+random_1d_conv['pool'] = None
 random_1d_conv['img_channels'] = 100
 # random_1d_conv['img_channels'] = 3
 alphas = torch.linspace(0.8, 3.0, 10)
