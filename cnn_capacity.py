@@ -303,7 +303,9 @@ def get_capacity(
     else:
         raise AttributeError('dataset_name option not recognized')
 
-    if shift_style == '1d':
+    if pool_over_group:
+        dataset = core_dataset
+    elif shift_style == '1d':
         dataset = datasets.ShiftDataset1D(core_dataset, shift_y)
     elif shift_style == '2d':
         dataset = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
@@ -313,10 +315,34 @@ def get_capacity(
         num_workers = 4
     else:
         num_workers = 0
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                             num_workers=num_workers,
-                                             shuffle=True)
-    test_input, test_label, core_idx = next(iter(dataloader))
+    if batch_size is None or batch_size == len(dataset):
+        batch_size = len(dataset)
+        if pool_over_group:
+            inputs = torch.stack([x[0] for x in dataset])
+            core_idx = list(range(len(dataset)))
+        else:
+            inputs, core_idx = zip(*[(x[0], x[2]) for x in dataset])
+            inputs = torch.stack(inputs)
+            core_idx = list(core_idx)
+        # class WholeDataLoader:
+            # def __iter__(self):
+                # return self
+            # def __next__(self):
+                # return inputs, None
+        # dataloader = WholeDataLoader()
+        dataloader = [(inputs, None, core_idx)]
+        # def dataloader_fn():
+            # yield inputs, None
+        # dataloader = dataloader_fn()
+    else:
+        dataloader = torch.utils.data.DataLoader(dataset,
+                                                 batch_size=batch_size,
+                                                 num_workers=num_workers,
+                                                 shuffle=True)
+
+
+
+    test_input, test_label = next(iter(dataloader))[:2]
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
     h_test = feature_fn(test_input)
     if h_test.shape[1] < n_channels:
@@ -324,22 +350,7 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
-    ## Get the memory size of the entire dataset and network response
-    #  in megabytes
-    if pool_over_group:
-        base_size = len(dataloader.dataset.core_dataset) * img_size_x * img_size_y
-    else:
-        base_size = len(dataloader.dataset) * img_size_x * img_size_y
-    dset_memsize =  base_size * (n_channels+3) * 4
-    if dset_memsize <= 20e09/n_cores: # Memory usage <= 20 GB roughly.
-        train_style = 'whole'
-        print("Dataset is <= 30GB -- training with standard SVM.")
-    else:
-        train_style = 'batched'
-        print("Dataset exceeds 30GB -- training with batches.")
-        print(f"The number of batches per epoch is {len(dataloader)}")
-    train_style = 'whole'
-    # train_style = 'batched'
+
 
     # # %%  Test data sampling
     # ds = dataloader.dataset
@@ -369,37 +380,62 @@ def get_capacity(
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         while len(set(class_random_labels.tolist())) < 2:
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
-        fitter = linear_model.SGDClassifier(tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
-                               max_iter=max_epochs)
+        perceptron = linear_model.SGDClassifier(
+            tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
+            max_iter=max_epochs)
         Pt = np.ones((N, 1)) / N**.5
-        if train_style == 'batched':
-            # print(f'Training using batched SGD')
             # curr_best_loss = 100.0
             # num_no_imp = 0
+        if batch_size == len(dataset):
+            inputs = dataloader[0][0]
+            core_idx = dataloader[0][2]
+            h = feature_fn(inputs)
+            if pool_over_group:
+                hrs = h.reshape(*h.shape[:2], -1)
+                centroids = hrs @ Pt
+                # centroids = centroids.unique(dim=0)
+                X = centroids.reshape(centroids.shape[0], -1).numpy()
+                Y = np.array(class_random_labels)
+            else:
+                X = h.reshape(h.shape[0], -1).numpy()
+                Y = class_random_labels[core_idx].numpy()
+            for epoch in range(max_epochs):
+                perceptron.partial_fit(X, Y, classes=(-1, 1))
+                curr_avg_acc = perceptron.score(X, Y).item()
+                if curr_avg_acc == 1.0:
+                    break
+
+        else:
             for epoch in range(max_epochs):
                 losses_epoch = []
                 class_acc_epoch = []
-                for k2, (input, label, core_idx) in enumerate(dataloader):
-                    random_labels = class_random_labels[core_idx].numpy()
-                    h = feature_fn(input)
+                for k2, data in enumerate(dataloader):
+                    inputs = data[0]
+                    h = feature_fn(inputs)
                     if pool_over_group:
                         hrs = h.reshape(*h.shape[:2], -1)
                         centroids = hrs @ Pt
-                        centroids = centroids.unique(dim=0)
-                        X = centroids.reshape(centroids.shape[0], -1).numpy().astype(float)
+                        # centroids = centroids.unique(dim=0)
+                        X = centroids.reshape(centroids.shape[0], -1).numpy()
                         Y = np.array(class_random_labels)
                     else:
+                        core_idx = data[2]
                         X = h.reshape(h.shape[0], -1).numpy()
-                        Y = random_labels
+                        Y = class_random_labels[core_idx].numpy()
                     perceptron.partial_fit(X, Y, classes=(-1, 1))
                     class_acc_epoch.append(perceptron.score(X, Y).item())
                     curr_avg_acc = sum(class_acc_epoch)/len(class_acc_epoch)
-                    perc_compl = round(100*(k2/len(dataloader)))
-                    if process_id is None:
-                        print(f'Epoch {epoch} progress {perc_compl}%', end='\r')
-                    else:
-                        print(f'Process {process_id}: Epoch {epoch} progress {perc_compl}%', end='\r')
+
+                    # perc_compl = round(100*(k2/len(dataloader)))
+                    # if process_id is None:
+                        # print(f'Epoch {epoch} progress {perc_compl}%', end='\r')
+                    # else:
+                        # print(f'Process {process_id}: Epoch {epoch} progress {perc_compl}%', end='\r')
                     # print(f'Process {process_id}: Epoch average acc {curr_avg_acc}')
+                # if process_id is None:
+                    # print(f'Epoch {epoch}/{max_epochs}', end='\r')
+                # else:
+                    # print(f'Process {process_id}: Epoch {epoch}/{max_epochs}', end='\r')
                 # if curr_avg_loss >= curr_best_loss - improve_tol:
                     # num_no_imp += 1
                 # else:
@@ -409,73 +445,32 @@ def get_capacity(
                     # break
                 if curr_avg_acc == 1.0:
                     break
-            return curr_avg_acc
-        elif train_style == 'whole':
-            # print('Training standard SVM.')
-            if pool_over_group:
-                ds = dataloader.dataset.core_dataset
-                n = len(ds)
-                inputs, labels = zip(*[ds[k] for k in range(n)])
-                # del labels # Free up memory
-                inputs = torch.stack(inputs)
-                h = feature_fn(inputs).numpy()
-                # del inputs # Free up memory
-                # core_idx_unique = core_idx.unique()
-                # num_pnts = len(core_idx_unique)
-                # havg = torch.zeros(num_pnts, *h.shape[1], 1)
-                # for k1, idx in enumerate(core_idx_unique):
-                    # loc = core_idx == idx
-                    # havg[k3] = (h[loc]).mean()
-                # del h
-                # hrs = havg.reshape(*havg.shape[:2], -1)
-                hrs = h.reshape(*h.shape[:2], -1)
-                # del h
-                centroids = hrs @ Pt
-                # del hrs # Free up memory
-                X = centroids.reshape(centroids.shape[0], -1)
-                Y = np.array(class_random_labels)
-                # print(Y)
-            else:
-                n = len(dataloader.dataset)
-                inputs, labels, core_idx = zip(
-                    *[dataloader.dataset[k] for k in range(n)])
-                del labels # Free up memory
-                core_idx = list(core_idx)
-                inputs = torch.stack(inputs)
-                hnp = feature_fn(inputs).numpy()
-                del inputs # Free up memory
-                X = hnp.reshape(hnp.shape[0], -1)
-                del hnp # Free up memory and ensure X is contiguous
-                Y = class_random_labels[core_idx].numpy()
+        return curr_avg_acc
 
-                ## Debug code for computing centroids directly
-                # core_idx = torch.tensor(core_idx)
-                # centroids_inp = torch.zeros(n_inputs, *input.shape[1:])
-                # for k2 in range(n_inputs):
-                    # centroids_inp[k2] = torch.mean(input[core_idx==k2], dim=0)
-                # centroids = torch.zeros(n_inputs, *h.shape[1:])
-                # Yc = torch.zeros(n_inputs)
-                # for k2 in range(n_inputs):
-                    # centroids[k2] = torch.mean(h[core_idx==k2], dim=0)
-                    # Yc[k2] = Y[core_idx==k2][0]
-                # centroids_inp_f = centroids_inp.reshape(*centroids_inp.shape[:2], -1)
-                # C_inp = centroids_inp_f[:,0].T @ centroids_inp_f[:,0]
-                # ew_inp, ev_inp = np.linalg.eigh(C_inp)
-                # centroids_f = centroids.reshape(*centroids.shape[:2], -1)
-                # C = centroids_f[:,0].T @ centroids_f[:,0]
-                # ew, ev = np.linalg.eigh(C)
-                # centroids_f_rs = centroids_f.reshape(centroids_f.shape[0], -1)
-                # C = centroids_f_rs.T @ centroids_f_rs
-                # ew, ev = np.linalg.eigh(C)
-                # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
-                                      # fit_intercept=fit_intercept)
-                # fitter.fit(centroids_f_rs, Yc)
-                # acc = fitter.score(centroids_f_rs, Yc)
+            ## Debug code for computing centroids directly
+            # core_idx = torch.tensor(core_idx)
+            # centroids_inp = torch.zeros(n_inputs, *input.shape[1:])
+            # for k2 in range(n_inputs):
+                # centroids_inp[k2] = torch.mean(input[core_idx==k2], dim=0)
+            # centroids = torch.zeros(n_inputs, *h.shape[1:])
+            # Yc = torch.zeros(n_inputs)
+            # for k2 in range(n_inputs):
+                # centroids[k2] = torch.mean(h[core_idx==k2], dim=0)
+                # Yc[k2] = Y[core_idx==k2][0]
+            # centroids_inp_f = centroids_inp.reshape(*centroids_inp.shape[:2], -1)
+            # C_inp = centroids_inp_f[:,0].T @ centroids_inp_f[:,0]
+            # ew_inp, ev_inp = np.linalg.eigh(C_inp)
+            # centroids_f = centroids.reshape(*centroids.shape[:2], -1)
+            # C = centroids_f[:,0].T @ centroids_f[:,0]
+            # ew, ev = np.linalg.eigh(C)
+            # centroids_f_rs = centroids_f.reshape(centroids_f.shape[0], -1)
+            # C = centroids_f_rs.T @ centroids_f_rs
+            # ew, ev = np.linalg.eigh(C)
+            # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
+                                  # fit_intercept=fit_intercept)
+            # fitter.fit(centroids_f_rs, Yc)
+            # acc = fitter.score(centroids_f_rs, Yc)
 
-            # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=60.,
-                                  # fit_intercept=fit_intercept)
-            # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=60.,
-                                  # fit_intercept=fit_intercept)
             # fitter = svm.LinearSVC(tol=1e-18, C=1e16, fit_intercept=fit_intercept,
                                    # max_iter=max_epochs)
             ## Debug code for checking rank of data 
@@ -483,16 +478,9 @@ def get_capacity(
             # C = X.T @ Xmc
             # ew, ev = np.linalg.eigh(C)
             # fitter.fit(X, Y)
-            for k2 in range(max_epochs):
-                fitter.partial_fit(X, Y, classes=(-1,1))
             # print(Y)
-            acc = fitter.score(X, Y)
-            # breakpoint()
-            # fig, ax = plt.subplots()
             # ax.scatter(X[:,0], X[:,1], c=Y)
             # plt.show()
-            # print(acc)
-            return acc
 
 
     if n_cores > 1:
