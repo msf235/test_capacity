@@ -32,6 +32,7 @@ import models
 import model_output_manager as mom
 import cnn_capacity_params as cp
 import datasets
+import cnn_capacity_utils as utils
 
 
 output_dir = 'output'
@@ -39,9 +40,9 @@ fig_dir = 'figs'
 rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 # rerun = False
-# n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 7  
-n_cores = 1 # setting to 1 for debugging.
+# n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
 # seeds = [3]
@@ -368,9 +369,12 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
-    P = np.ones((1, N)) / N
-    Pt = np.ones((N, 1)) / N
-    Pfullt = np.ones((N, N)) / N
+    P = utils.compute_pi_sum_reduced_2D(h_test.shape[-2], h_test.shape[-1],
+                                   shift_x, shift_y)
+    Pt = P.T.copy()
+    # P = np.ones((1, N)) / N
+    # Pt = np.ones((N, 1)) / N
+    # Pfullt = np.ones((N, N)) / N
     
     # # %%  Test data sampling
     # ds = dataloader.dataset
