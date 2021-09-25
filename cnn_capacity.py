@@ -52,7 +52,8 @@ seeds = [3, 4, 5]
 # param_set = cp.random_2d_conv_exps
 # param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
-param_set = cp.randpoint_exps + cp.random_1d_conv_exps
+# param_set = cp.randpoint_exps + cp.random_1d_conv_exps
+param_set = cp.random_1d_conv_exps
 # param_set = cp.random_2d_conv_shift2_exps
 # param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
@@ -203,6 +204,7 @@ def get_capacity(
                 # cnt = cnt + 1
                 # if cnt >= k:
                     # break
+    pool_efficient_shift = 0
 
     if net_style == 'vgg11':
         net = models.vgg('vgg11_bn', 'A', batch_norm=True, pretrained=True)
@@ -212,6 +214,12 @@ def get_capacity(
                 feats = net.get_features(inputs, layer_idx)
                 feats = feats[:, :n_channels]
                 return feats
+        if perceptron_style == 'efficient' and layer > 2:
+            if layer > 6:
+                raise AttributeError("""This parameter combination not
+                                     supported.""")
+            pool_efficient_shift = 1
+
     elif net_style == 'alexnet':
         net = models.alexnet(pretrained=True)
         net.eval()
@@ -260,6 +268,8 @@ def get_capacity(
             elif pool == 'mean':
                 pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
                                                 (pool_x, pool_y)) 
+            if layer > 1:
+                pool_efficient_shift = 1
             layers.append(pool_layer)
         layers = layers[:layer_idx+1]
         net = torch.nn.Sequential(*layers)
@@ -369,8 +379,8 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
-    P = utils.compute_pi_sum_reduced_2D(h_test.shape[-2], h_test.shape[-1],
-                                   shift_x, shift_y)
+    P = utils.compute_pi_mean_reduced_2D(h_test.shape[-2], h_test.shape[-1],
+                                   shift_x, shift_y) 
     Pt = P.T.copy()
     # P = np.ones((1, N)) / N
     # Pt = np.ones((N, 1)) / N
@@ -412,8 +422,8 @@ def get_capacity(
             # tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
             # max_iter=max_epochs)
         perceptron = linear_model.SGDClassifier(
-            tol=1e-18, alpha=1e-6, fit_intercept=fit_intercept,
-            max_iter=max_epochs)
+            tol=1e-18, alpha=1e-10, fit_intercept=fit_intercept,
+            max_iter=max_epochs, random_state=seed)
             # curr_best_loss = 100.0
             # num_no_imp = 0
         if batch_size == len(dataset):
@@ -424,6 +434,16 @@ def get_capacity(
             Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
             Yfull = class_random_labels[coreidxfull].numpy()
             if pool_over_group or perceptron_style == 'efficient':
+                if pool_efficient_shift == 1:
+                    inputs21 = torch.roll(inputs, shifts=1, dims=-2) 
+                    h21 = feature_fn(inputs21)
+                    inputs12 = torch.roll(inputs, shifts=1, dims=-1) 
+                    h12 = feature_fn(inputs12)
+                    inputs22 = torch.roll(inputs21, shifts=1, dims=-1) 
+                    h22 = feature_fn(inputs22)
+                    h = torch.cat((h, h21, h12, h22), dim=0)
+                    Y = np.array(class_random_labels)
+                    Y = np.concatenate((Y,Y,Y,Y), axis=0)
                 hrs = h.reshape(*h.shape[:2], -1)
                 centroids = hrs @ Pt
                 X = centroids.reshape(centroids.shape[0], -1).numpy()
