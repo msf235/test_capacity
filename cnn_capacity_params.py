@@ -29,14 +29,18 @@ def exps_channels_and_layers(param_base, n_channels, layers=None):
 random_1d_conv = dict(
 n_dichotomies = 100, # Number of random dichotomies to test
 n_inputs = 40, # Number of input samples to test
-max_epochs = 1000, # Maximum number of epochs.
+max_epochs = 4000, # Maximum number of epochs.
+# max_epochs_no_imp = 200,
+# improve_tol = 1e-10
 batch_size = None, # Batch size if training with SGD
 img_size_x = 40, # Size of image x dimension.
 img_size_y = 1, # Size of image y dimension.
 net_style = 'rand_conv', # Random convolutional layer.
-layer_idx = 0,
+# layer_idx = 0,
+layer_idx = 1,
 dataset_name = 'gaussianrandom', # Use Gaussian random inputs.
-img_channels = 100,
+# img_channels = 100,
+img_channels = 3,
 perceptron_style = 'efficient',
 shift_style = '2d', # Use input shifts in both x and y dimensions
 shift_x = 1, # Number of pixels by which to shift in the x direction
@@ -50,6 +54,7 @@ fit_intercept = False,
 center_response = False,
 )
 alphas = torch.linspace(0.8, 3.0, 10)
+# alphas = torch.linspace(1.5, 2.0, 2)
 n_channels = alphas_to_channels(alphas, random_1d_conv['n_inputs'],
     int(random_1d_conv['fit_intercept']))
 random_1d_conv_exps = exps_channels_and_layers( random_1d_conv, n_channels)
@@ -62,28 +67,12 @@ n_channels = alphas_to_channels(
 randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
 
 # Random CNN layer
-random_2d_conv = dict(
-n_dichotomies = 100, # Number of random dichotomies to test
-n_inputs = 40, # Number of input samples to test
-max_epochs = 4000, # Maximum number of epochs.
-batch_size = None, # Batch size if training with SGD
-img_size_x = 10, # Size of image x dimension.
-img_size_y = 10, # Size of image y dimension.
-net_style = 'rand_conv', # Random convolutional layer.
-dataset_name = 'gaussianrandom', # Use Gaussian random inputs.
-perceptron_style = 'efficient',
-shift_style = '2d', # Use input shifts in both x and y dimensions
-shift_x = 1, # Number of pixels by which to shift in the x direction
-shift_y = 1, # Number of pixels by which to shift in the y direction
-# pool_over_group = True, # Whether or not to average (pool) the representation over the
-pool_over_group = False, # group before fitting the linear classifier.
-pool='max', 
+random_2d_conv = random_1d_conv.copy()
+random_2d_conv = random_2d_conv.update(
+img_size_x = 10,
+img_size_y = 10,
 pool_x = 2,
-pool_y = 2,
-fit_intercept = False,
-center_response = False,  # response 
-)
-alphas = torch.linspace(0.8, 3.0, 10)
+pool_y = 2)
 n_channels = alphas_to_channels(
     alphas, random_2d_conv['n_inputs'],
     int(random_2d_conv['fit_intercept']))
@@ -105,39 +94,23 @@ random_2d_conv_shift2_exps = exps_channels_and_layers(
     random_2d_conv_shift2, n_channels)
 
 
-# Random CNN layer with max pooling
-random_2d_conv_maxpool2 = random_2d_conv.copy()
-random_2d_conv_maxpool2.update(
-pool='max',
-pool_x=2,
-pool_y=2,
-img_size_x=20,
-img_size_y=20,
-)
-alphas=torch.linspace(.2, 1.5, 10)
-n_channels = alphas_to_channels(
-    alphas, random_2d_conv_maxpool2['n_inputs'],
-    int(random_2d_conv_maxpool2['fit_intercept']))
-random_2d_conv_maxpool2_exps = exps_channels_and_layers(
-    random_2d_conv_maxpool2, n_channels)
-
 ## VGG11 on CIFAR10
 vgg11_cifar10 = dict(
 n_dichotomies = 100, # Number of random dichotomies to test
 n_inputs = 12, # Number of input samples to test
 max_epochs = 500, # Maximum number of epochs.
-batch_size = 512, # Batch size if training with SGD.
+batch_size = None, # Batch size if training with SGD.
 img_size_x = 32, # Size of image x dimension.
 img_size_y = 32, # Size of image y dimension.
 net_style = 'vgg11', # AlexNet layers.
+perceptron_style = 'efficient',
 dataset_name = 'cifar10', # Use imagenet inputs.
 shift_style = '2d', # Use input shifts in both x and y dimensions
 shift_x = 1, # Number of pixels by which to shift in the x direction
 shift_y = 1, # Number of pixels by which to shift in the y direction
 pool_over_group = False, # group before fitting the linear classifier.
 pool=None,
-fit_intercept = True, # Whether or not to fit the intercept in the linear
-                      # classifier
+fit_intercept = False, 
 center_response = False,  # response 
 )
 alphas = torch.linspace(0.8, 3.0, 10)
@@ -145,13 +118,8 @@ layer_idx = [2, 3, 6]
 n_channels = alphas_to_channels(
     alphas, vgg11_cifar10['n_inputs'],
     int(vgg11_cifar10['fit_intercept']))
-vgg11_cifar10_exps = []
-for n_channel in n_channels:
-    for layer in layer_idx:
-        temp = vgg11_cifar10.copy()
-        temp['n_channels'] = n_channel
-        temp['layer_idx'] = layer
-        vgg11_cifar10_exps.append(temp)
+vgg11_cifar10_exps = exps_channels_and_layers(vgg11_cifar10, n_channels,
+                                              layer_idx)
 
 
 ######### Not Used #############################

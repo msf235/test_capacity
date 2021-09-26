@@ -37,10 +37,11 @@ import cnn_capacity_utils as utils
 
 output_dir = 'output'
 fig_dir = 'figs'
-rerun = True # If True, rerun the simulation even if a matching simulation is
+# rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-# rerun = False
-n_cores = 15  # Number of processor cores to use for multiprocessing. Recommend
+rerun = False
+# n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
+n_cores = 15
 # n_cores = 7  
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
@@ -52,14 +53,12 @@ seeds = [3, 4, 5]
 # param_set = cp.random_2d_conv_exps
 # param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
-# param_set = cp.randpoint_exps + cp.random_1d_conv_exps
-param_set = cp.random_1d_conv_exps
+param_set = cp.randpoint_exps + cp.random_2d_conv_exps
+# param_set = cp.random_1d_conv_exps
 # param_set = cp.random_2d_conv_shift2_exps
 # param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
-# param_set = cp.grid_2d_conv_exps
-# param_set = cp.alexnet_imagenet_exps
 # param_set = cp.vgg11_cifar10_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
@@ -67,21 +66,27 @@ param_set = cp.random_1d_conv_exps
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
 # image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
 
-class HingeLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
+# class HingeLoss(torch.nn.Module):
+    # def __init__(self):
+        # super().__init__()
 
-    def forward(self, output, target):
-        hinge_loss = 1 - torch.mul(output, target)
-        hinge_loss[hinge_loss < 0] = 0
-        return hinge_loss.mean()
+    # def forward(self, output, target):
+        # hinge_loss = 1 - torch.mul(output, target)
+        # hinge_loss = torch.relu(hinge_loss)
+        # # hinge_loss[hinge_loss < 0] = 0
+        # return hinge_loss.mean()
+
+def hinge_loss(output, target):
+    hinge_loss = 1 - output*target[:, np.newaxis]
+    hinge_loss[hinge_loss < 0] = 0
+    return hinge_loss.mean()
 
 
 # % Main function for capacity. This function is memoized based on its
 # parameters.
 def get_capacity(
     n_channels, n_inputs, seed=3, n_dichotomies=100, max_epochs=500,
-    max_epochs_no_imp=100, improve_tol=1e-3, batch_size=256, img_size_x=10,
+    max_epochs_no_imp=None, improve_tol=1e-3, batch_size=256, img_size_x=10,
     img_size_y=10, img_channels=3, net_style='rand_conv', layer_idx=0,
     dataset_name='gaussianrandom', shift_style='2d', shift_x=1, shift_y=1,
     pool_over_group=False, perceptron_style='standard',
@@ -160,6 +165,8 @@ def get_capacity(
     if pool is None:
         pool_x = None
         pool_y = None
+    if max_epochs_no_imp is None:
+        improve_tol = None
     loc = locals()
     args = inspect.getfullargspec(get_capacity)[0]
     params = {arg: loc[arg] for arg in args}
@@ -175,12 +182,6 @@ def get_capacity(
             pass
 
     if perceptron_style == 'efficient':
-        if shift_x != 1 or shift_y != 1:
-            raise AttributeError("""perceptron_style=efficient not implemented
-                                for shifts of more than one position.""")
-        if pool:
-            raise AttributeError("""perceptron_style=efficient not implemented
-                                with local pooling.""")
         if pool_over_group:
             raise AttributeError("""perceptron_style=efficient not implemented
                                 with group pooling.""")
@@ -401,11 +402,16 @@ def get_capacity(
 
     # # %% 
 
-    loss_fn = HingeLoss()
+    # loss_fn = HingeLoss()
+    loss_fn = hinge_loss
 
+    # def score(w, X, Y):
+        # Ytilde = X @ w
+        # return np.mean(np.sign(Ytilde) == np.sign(Y))
+    
     def score(w, X, Y):
         Ytilde = X @ w
-        return np.mean(np.sign(Ytilde) == np.sign(Y))
+        return np.mean(np.sign(Ytilde-.5) == np.sign(Y-.5))
 
     def class_acc(outs, targets):
         correct = 1.0*(outs * random_labels > 0)
@@ -421,11 +427,17 @@ def get_capacity(
         # perceptron = linear_model.SGDClassifier(
             # tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
             # max_iter=max_epochs)
-        perceptron = linear_model.SGDClassifier(
-            tol=1e-18, alpha=1e-10, fit_intercept=fit_intercept,
-            max_iter=max_epochs, random_state=seed)
+        # perceptron = linear_model.SGDClassifier(
+            # tol=1e-18, alpha=1e-6, fit_intercept=fit_intercept,
+            # max_iter=max_epochs, random_state=seed)
             # curr_best_loss = 100.0
             # num_no_imp = 0
+        perceptron = linear_model.LogisticRegression(
+            tol=1e-18, C=1e8, fit_intercept=fit_intercept,
+            max_iter=max_epochs, random_state=seed)
+        # perceptron = svm.LinearSVC(
+            # tol=1e-18, C=1e8, fit_intercept=fit_intercept,
+            # max_iter=max_epochs, random_state=seed)
         if batch_size == len(dataset):
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
@@ -451,17 +463,38 @@ def get_capacity(
             else:
                 X = h.reshape(h.shape[0], -1).numpy()
                 Y = class_random_labels[core_idx].numpy()
-            for epoch in range(max_epochs):
-                perceptron.partial_fit(X, Y, classes=(-1, 1))
-                if perceptron_style == 'efficient':
-                    wtemp = perceptron.coef_.copy()
-                    wtemp = wtemp.T @ P
-                    wtemp = wtemp.reshape(-1)
-                    curr_avg_acc = score(wtemp, Xfull, Yfull)
-                else:
-                    curr_avg_acc = perceptron.score(X, Y).item()
-                if curr_avg_acc == 1.0:
-                    break
+            Y = (Y + 1)/2
+            Yfull = (Yfull + 1)/2
+            perceptron.fit(X, Y)
+            if perceptron_style == 'efficient':
+                wtemp = perceptron.coef_.copy()
+                wtemp = wtemp.T @ P
+                wtemp = wtemp.reshape(-1)
+                curr_avg_acc = score(wtemp, Xfull, Yfull)
+            else:
+                curr_avg_acc = perceptron.score(X, Y).item()
+            # curr_best_loss = 1000
+            # not_improved_cntr = 0
+            # for epoch in range(max_epochs):
+                # perceptron.partial_fit(X, Y, classes=(-1, 1))
+                # if perceptron_style == 'efficient':
+                    # wtemp = perceptron.coef_.copy()
+                    # wtemp = wtemp.T @ P
+                    # wtemp = wtemp.reshape(-1)
+                    # curr_avg_acc = score(wtemp, Xfull, Yfull)
+                # else:
+                    # curr_avg_acc = perceptron.score(X, Y).item()
+                # if curr_avg_acc == 1.0:
+                    # break
+                # if max_epochs_no_imp is not None:
+                    # loss = loss_fn(X, Y)
+                    # if curr_best_loss >= loss - improve_tol:
+                        # not_improved_cntr += 1
+                    # else:
+                        # not_improved_cntr = 0
+                    # curr_best_loss = min(curr_best_loss, loss)
+                    # if not_improved_cntr >= max_epochs_no_imp:
+                        # break
         else:
             for epoch in range(max_epochs):
                 losses_epoch = []
