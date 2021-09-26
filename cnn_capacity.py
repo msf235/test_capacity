@@ -37,7 +37,7 @@ import cnn_capacity_utils as utils
 
 output_dir = 'output'
 fig_dir = 'figs'
-rerun = True # If True, rerun the simulation even if a matching simulation is
+# rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
@@ -62,6 +62,7 @@ seeds = [3, 4, 5]
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
 param_set = cp.vgg11_cifar10_exps
+# param_set = cp.vgg11_cifar10_efficient_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
 # ImageNet directory
