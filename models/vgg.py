@@ -63,7 +63,7 @@ class VGG(nn.Module):
         self,
         features: nn.Module,
         num_classes: int = 10,
-        init_weights: bool = True
+        init_weights: bool = True,
     ) -> None:
         super(VGG, self).__init__()
         self.features = features
@@ -118,7 +118,14 @@ class VGG(nn.Module):
 
 
 def make_layers(cfg: List[Union[str, int]],
-                batch_norm: bool = False) -> nn.ModuleList:
+                batch_norm: bool = False,
+                circular_conv: bool = False) -> nn.ModuleList:
+    if circular_conv:
+        padding_mode = 'circular'
+        padding=0
+    else:
+        padding_mode = 'zeros'
+        padding=1
     layers = nn.ModuleList()
     in_channels = 3
     for v in cfg:
@@ -126,7 +133,8 @@ def make_layers(cfg: List[Union[str, int]],
             layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
         else:
             v = cast(int, v)
-            conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
+            conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=padding,
+                              padding_mode=padding_mode)
             if batch_norm:
                 layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
             else:
@@ -144,11 +152,13 @@ cfgs: Dict[str, List[Union[str, int]]] = {
 
 
 def vgg(arch: str, cfg: str, batch_norm: bool,
-         model_urls: Dict[str, str] = cifar10_pretrained_weight_urls,
-         pretrained: bool = False, progress: bool = True, **kwargs: Any) -> VGG:
+        model_urls: Dict[str, str] = cifar10_pretrained_weight_urls,
+        pretrained: bool = False, progress: bool = True, 
+        circular_conv: bool = False, **kwargs: Any) -> VGG:
     if pretrained:
         kwargs['init_weights'] = False
-    model = VGG(make_layers(cfgs[cfg], batch_norm=batch_norm), **kwargs)
+    model = VGG(make_layers(cfgs[cfg], batch_norm=batch_norm,
+                            circular_conv=circular_conv), **kwargs)
     if pretrained:
         state_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)

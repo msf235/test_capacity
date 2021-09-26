@@ -37,12 +37,13 @@ import cnn_capacity_utils as utils
 
 output_dir = 'output'
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
-n_cores = 15
-# n_cores = 10
+# n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
+# n_cores = 15
+n_cores = 10
 # n_cores = 7  
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
@@ -51,7 +52,7 @@ seeds = [3, 4, 5]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
-param_set = cp.random_2d_conv_exps
+# param_set = cp.random_2d_conv_exps
 # param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
 # param_set = cp.randpoint_exps + cp.random_2d_conv_exps
@@ -60,7 +61,7 @@ param_set = cp.random_2d_conv_exps
 # param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
-# param_set = cp.vgg11_cifar10_exps
+param_set = cp.vgg11_cifar10_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
 # ImageNet directory
@@ -208,8 +209,12 @@ def get_capacity(
                     # break
     pool_efficient_shift = 0
 
-    if net_style == 'vgg11':
-        net = models.vgg('vgg11_bn', 'A', batch_norm=True, pretrained=True)
+    if net_style[:5] == 'vgg11':
+        if net_style[6:] == 'circular':
+            net = models.vgg('vgg11_bn', 'A', batch_norm=True, pretrained=True,
+                            circular_conv=True)
+        else:
+            net = models.vgg('vgg11_bn', 'A', batch_norm=True, pretrained=True)
         net.eval()
         def feature_fn(inputs):
             with torch.no_grad():
