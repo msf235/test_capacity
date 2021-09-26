@@ -37,7 +37,8 @@ img_size_x = 40, # Size of image x dimension.
 img_size_y = 1, # Size of image y dimension.
 net_style = 'rand_conv', # Random convolutional layer.
 # layer_idx = 0,
-layer_idx = 1,
+# layer_idx = 1,
+layer_idx = 2,
 dataset_name = 'gaussianrandom', # Use Gaussian random inputs.
 # img_channels = 100,
 img_channels = 3,
@@ -46,8 +47,8 @@ shift_style = '2d', # Use input shifts in both x and y dimensions
 shift_x = 1, # Number of pixels by which to shift in the x direction
 shift_y = 1, # Number of pixels by which to shift in the y direction
 pool_over_group = False, # group before fitting the linear classifier.
-# pool='max', 
-pool=None,
+pool='max', 
+# pool=None,
 # pool_x = 2,
 # pool_y = 1,
 fit_intercept = False,
@@ -69,15 +70,17 @@ randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
 # Random CNN layer
 random_2d_conv = random_1d_conv.copy()
 random_2d_conv.update(
+perceptron_style='standard',
 img_size_x = 10,
 img_size_y = 10,
 pool_x = 2,
 pool_y = 2)
+alphas = torch.linspace(0.5, 2.0, 10)
 n_channels = alphas_to_channels(
     alphas, random_2d_conv['n_inputs'],
     int(random_2d_conv['fit_intercept']))
 random_2d_conv_exps = exps_channels_and_layers(
-    random_2d_conv, n_channels, [1,2])
+    random_2d_conv, n_channels)
 
 
 # Random CNN layer with 2 pixel shifts
@@ -103,7 +106,7 @@ batch_size = None, # Batch size if training with SGD.
 img_size_x = 32, # Size of image x dimension.
 img_size_y = 32, # Size of image y dimension.
 net_style = 'vgg11', # AlexNet layers.
-perceptron_style = 'efficient',
+# perceptron_style = 'efficient',
 dataset_name = 'cifar10', # Use imagenet inputs.
 shift_style = '2d', # Use input shifts in both x and y dimensions
 shift_x = 1, # Number of pixels by which to shift in the x direction

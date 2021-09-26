@@ -42,6 +42,7 @@ fig_dir = 'figs'
 rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 n_cores = 15
+# n_cores = 10
 # n_cores = 7  
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
@@ -50,10 +51,10 @@ seeds = [3, 4, 5]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
-# param_set = cp.random_2d_conv_exps
+param_set = cp.random_2d_conv_exps
 # param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
-param_set = cp.randpoint_exps + cp.random_2d_conv_exps
+# param_set = cp.randpoint_exps + cp.random_2d_conv_exps
 # param_set = cp.random_1d_conv_exps
 # param_set = cp.random_2d_conv_shift2_exps
 # param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
@@ -442,10 +443,11 @@ def get_capacity(
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
             h = feature_fn(inputs)
-            hfull = feature_fn(inputsfull)
-            Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
-            Yfull = class_random_labels[coreidxfull].numpy()
             if pool_over_group or perceptron_style == 'efficient':
+                hfull = feature_fn(inputsfull)
+                Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
+                Yfull = class_random_labels[coreidxfull].numpy()
+                Y = np.array(class_random_labels)
                 if pool_efficient_shift == 1:
                     inputs21 = torch.roll(inputs, shifts=1, dims=-2) 
                     h21 = feature_fn(inputs21)
@@ -454,17 +456,15 @@ def get_capacity(
                     inputs22 = torch.roll(inputs21, shifts=1, dims=-1) 
                     h22 = feature_fn(inputs22)
                     h = torch.cat((h, h21, h12, h22), dim=0)
-                    Y = np.array(class_random_labels)
                     Y = np.concatenate((Y,Y,Y,Y), axis=0)
                 hrs = h.reshape(*h.shape[:2], -1)
                 centroids = hrs @ Pt
                 X = centroids.reshape(centroids.shape[0], -1).numpy()
-                Y = np.array(class_random_labels)
+                Yfull = (Yfull + 1)/2
             else:
                 X = h.reshape(h.shape[0], -1).numpy()
                 Y = class_random_labels[core_idx].numpy()
             Y = (Y + 1)/2
-            Yfull = (Yfull + 1)/2
             perceptron.fit(X, Y)
             if perceptron_style == 'efficient':
                 wtemp = perceptron.coef_.copy()
