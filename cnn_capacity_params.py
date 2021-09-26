@@ -73,7 +73,8 @@ randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
 # Random CNN layer
 random_2d_conv = random_1d_conv.copy()
 random_2d_conv.update(
-perceptron_style='standard',
+# perceptron_style='standard',
+perceptron_style='efficient',
 img_size_x = 10,
 img_size_y = 10,
 pool_x = 2,
@@ -111,7 +112,7 @@ img_size_x = 32, # Size of image x dimension.
 img_size_y = 32, # Size of image y dimension.
 # net_style = 'vgg11', # AlexNet layers.
 net_style = 'vgg11_circular', # AlexNet layers.
-# perceptron_style = 'efficient',
+perceptron_style = 'efficient',
 dataset_name = 'cifar10', # Use imagenet inputs.
 shift_style = '2d', # Use input shifts in both x and y dimensions
 shift_x = 1, # Number of pixels by which to shift in the x direction
@@ -122,7 +123,9 @@ fit_intercept = False,
 center_response = False,  # response 
 )
 alphas = torch.linspace(0.5, 3.0, 15)
+# alphas = torch.linspace(1.8, 2.2, 1)
 layer_idx = [2, 3, 6]
+# layer_idx = [2]
 n_channels = alphas_to_channels(
     alphas, vgg11_cifar10['n_inputs'],
     int(vgg11_cifar10['fit_intercept']))

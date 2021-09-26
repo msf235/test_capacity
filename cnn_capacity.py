@@ -39,12 +39,12 @@ output_dir = 'output'
 fig_dir = 'figs'
 rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-rerun = False
+# rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 15
-n_cores = 10
-# n_cores = 7  
+# n_cores = 10
+n_cores = 7  
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
@@ -477,7 +477,7 @@ def get_capacity(
                 wtemp = wtemp.reshape(-1)
                 curr_avg_acc = score(wtemp, Xfull, Yfull)
             else:
-                curr_avg_acc = perceptron.score(X, Y).item()
+                curr_avg_acc = perceptron.score(X, Y)
             # curr_best_loss = 1000
             # not_improved_cntr = 0
             # for epoch in range(max_epochs):
