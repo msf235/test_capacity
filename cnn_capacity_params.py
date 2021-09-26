@@ -68,7 +68,7 @@ randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
 
 # Random CNN layer
 random_2d_conv = random_1d_conv.copy()
-random_2d_conv = random_2d_conv.update(
+random_2d_conv.update(
 img_size_x = 10,
 img_size_y = 10,
 pool_x = 2,
