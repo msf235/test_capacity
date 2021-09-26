@@ -122,7 +122,7 @@ def make_layers(cfg: List[Union[str, int]],
                 circular_conv: bool = False) -> nn.ModuleList:
     if circular_conv:
         padding_mode = 'circular'
-        padding=0
+        padding='same'
     else:
         padding_mode = 'zeros'
         padding=1
