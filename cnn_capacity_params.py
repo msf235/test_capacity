@@ -132,9 +132,15 @@ n_channels = alphas_to_channels(
 vgg11_cifar10_exps = exps_channels_and_layers(vgg11_cifar10, n_channels,
                                               layer_idx)
 
-vgg11_cifar10_efficient = vgg11_cifar10.copy()
-vgg11_cifar10_efficient.update(
+vgg11_cifar10_circular = vgg11_cifar10.copy()
+vgg11_cifar10_circular.update(
     net_style='vgg11_circular',
+)
+vgg11_cifar10_circular_exps = exps_channels_and_layers(
+    vgg11_cifar10_circular, n_channels, layer_idx)
+
+vgg11_cifar10_efficient = vgg11_cifar10_circular.copy()
+vgg11_cifar10_efficient.update(
     perceptron_style='efficient',
 )
 vgg11_cifar10_efficient_exps = exps_channels_and_layers(

@@ -34,7 +34,6 @@ import cnn_capacity_params as cp
 import datasets
 import cnn_capacity_utils as utils
 
-
 output_dir = 'output'
 fig_dir = 'figs'
 # rerun = True # If True, rerun the simulation even if a matching simulation is
