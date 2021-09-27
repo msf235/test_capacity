@@ -39,12 +39,12 @@ output_dir = 'output'
 fig_dir = 'figs'
 # rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-# rerun = False
+rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 15
-# n_cores = 10
-n_cores = 7  
+n_cores = 10
+# n_cores = 7  
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
@@ -61,8 +61,8 @@ seeds = [3, 4, 5]
 # param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
-param_set = cp.vgg11_cifar10_exps
-# param_set = cp.vgg11_cifar10_efficient_exps
+# param_set = cp.vgg11_cifar10_exps
+param_set = cp.vgg11_cifar10_efficient_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
 # ImageNet directory
