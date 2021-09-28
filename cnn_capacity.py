@@ -51,8 +51,30 @@ seeds = [3, 4, 5]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
-# param_set = cp.random_2d_conv_exps
-param_set = cp.random_2d_conv_efficient_exps
+# param_set_name = 'random_1d_conv_exps'
+# param_set_name = 'randpoint_exps'
+# param_set_name = 'random_1d_conv_exps'
+# param_set_name = 'random_2d_conv_exps'
+# param_set_name = 'random_2d_conv_shift2_exps'
+# param_set_name = 'vgg11_cifar10_exps'
+# param_set_name = 'vgg11_cifar10_circular_exps'
+# param_set_name = 'vgg11_cifar10_efficient_exps'
+
+# param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
+# param_set_names = ['vgg11_cifar10_efficient_exps']
+param_set_names = ['vgg11_cifar10_gpool_exps']
+# param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
+# param_set_names = ['random_2d_conv_gpool_exps']
+# param_set_names = ['random_2d_conv_efficient_exps']
+
+param_set = []
+for name in param_set_names:
+    for ps in cp.param_sets[name]:
+        param_set.append(ps)
+
+# param_set = cp.param_sets[param_set_name]
+# param_set = cp.rrandom_2d_conv_maxpool2_expsandom_2d_conv_exps
+# param_set = cp.random_2d_conv_efficient_exps
 # param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
 # param_set = cp.randpoint_exps + cp.random_2d_conv_exps
@@ -347,15 +369,15 @@ def get_capacity(
     else:
         num_workers = 0
 
-    if pool_over_group:
-        dataset = core_dataset
-    elif shift_style == '1d':
+    # if pool_over_group:
+        # dataset = core_dataset
+    if shift_style == '1d':
         dataset = datasets.ShiftDataset1D(core_dataset, shift_y)
     elif shift_style == '2d':
         dataset = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
     else:
         raise AttributeError('Unrecognized option for shift_style.')
-    if perceptron_style == 'efficient':
+    if perceptron_style == 'efficient' or pool_over_group:
         datasetfull = dataset
         dataset = core_dataset
         inputsfull = torch.stack([x[0] for x in datasetfull])
@@ -450,10 +472,12 @@ def get_capacity(
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
             h = feature_fn(inputs)
-            if pool_over_group or perceptron_style == 'efficient':
-                hfull = feature_fn(inputsfull)
-                Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
-                Yfull = class_random_labels[coreidxfull].numpy()
+            if perceptron_style == 'efficient' or pool_over_group:
+                if perceptron_style == 'efficient':
+                    hfull = feature_fn(inputsfull)
+                    Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
+                    Yfull = class_random_labels[coreidxfull].numpy()
+                    Yfull = (Yfull + 1)/2
                 Y = np.array(class_random_labels)
                 if pool_efficient_shift == 1:
                     inputs21 = torch.roll(inputs, shifts=1, dims=-2) 
@@ -467,7 +491,11 @@ def get_capacity(
                 hrs = h.reshape(*h.shape[:2], -1)
                 centroids = hrs @ Pt
                 X = centroids.reshape(centroids.shape[0], -1).numpy()
-                Yfull = (Yfull + 1)/2
+            # elif pool_over_group:
+                # hrs = h.reshape(*h.shape[:2], -1)
+                # centroids = hrs @ Pt
+                # X = centroids.reshape(centroids.shape[0], -1).numpy()
+                # Y = np.array(class_random_labels)
             else:
                 X = h.reshape(h.shape[0], -1).numpy()
                 Y = class_random_labels[core_idx].numpy()
@@ -635,13 +663,16 @@ if __name__ == '__main__':
             net_style = params['net_style']
             layer = params['layer_idx']
             offset = int(params['fit_intercept'])
+            pool_over_group = params['pool_over_group']
             alpha = n_input / (n_channel + offset)
             capacity = get_capacity(seed=seed, **params)
             cover_capacity = cover_theorem(n_input, n_channel)
             d1 = {'seed': seed, 'alpha': alpha, 'n_inputs': n_input,
                   'n_channels': n_channel, 'n_channels_offset':
                   n_channel + offset, 'fit_intercept': params['fit_intercept'],
-                  'layer': layer, 'net_style': net_style, 'capacity': capacity}
+                  'layer': layer, 'net_style': net_style, 'capacity': capacity,
+                  'pool_over_group': pool_over_group
+                 }
             # for var in plot_vars:
                 # d1[var] = params[var]
             d1 = pd.DataFrame(d1, index=[0])
@@ -654,12 +685,14 @@ if __name__ == '__main__':
         style = 'net_style'
     else:
         style = None
+    style = 'pool_over_group'
     os.makedirs('figs', exist_ok=True)
     results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
-    fig, ax = plt.subplots()
+
+    fig, ax = plt.subplots(figsize=(4,3))
     sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  hue='layer', style=style)
     # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
@@ -675,10 +708,11 @@ if __name__ == '__main__':
     cover_cap_maxpool = {p/n: cover_theorem(2*p, n) for n in range(nmin, nmax+1)
                 for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
     ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='dotted',
-           color='blue', label='theory')
-    ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()), linestyle='dotted',
-           color='red', label='theory maxpool')
+           color='black', label='theory')
+    # ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()), linestyle='dotted',
+           # color='red', label='theory maxpool')
     ax.legend()
     ax.set_ylim([-.01, 1.01])
-    fig.savefig('figs/most_recent.pdf')
+    pnames = '__'.join(param_set_names)
+    fig.savefig(f'figs/{pnames}.pdf', bbox_inches='tight')
 

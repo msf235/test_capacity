@@ -26,6 +26,8 @@ def exps_channels_and_layers(param_base, n_channels, layers=None):
             
     return exps
 
+param_sets = {}
+
 ## One-dimensional random CNN layer.
 random_1d_conv = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
@@ -60,15 +62,19 @@ layer_idx = [1, 2]
 # alphas = torch.linspace(1.5, 2.0, 2)
 n_channels = alphas_to_channels(alphas, random_1d_conv['n_inputs'],
     int(random_1d_conv['fit_intercept']))
+param_sets.update(
 random_1d_conv_exps = exps_channels_and_layers(random_1d_conv, n_channels,
                                               layers=layer_idx)
+)
 
 ## Random inputs
 randpoint = random_1d_conv.copy()
 randpoint['net_style'] = 'randpoints'
 n_channels = alphas_to_channels(
     alphas, randpoint['n_inputs'], int(randpoint['fit_intercept']))
+param_sets.update(
 randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
+)
 
 ## Random CNN layer
 random_2d_conv = random_1d_conv.copy()
@@ -84,15 +90,27 @@ layer_idx = [1, 2]
 n_channels = alphas_to_channels(
     alphas, random_2d_conv['n_inputs'],
     int(random_2d_conv['fit_intercept']))
+param_sets.update(
 random_2d_conv_exps = exps_channels_and_layers(
     random_2d_conv, n_channels, layers=layer_idx)
+)
+random_2d_conv_gpool = random_2d_conv.copy()
+random_2d_conv_gpool.update(
+    pool_over_group=True,
+)
+param_sets.update(
+    random_2d_conv_gpool_exps = exps_channels_and_layers(
+            random_2d_conv_gpool, n_channels, layers=layer_idx)
+)
 
 random_2d_conv_efficient = random_2d_conv.copy()
 random_2d_conv_efficient.update(
     perceptron_style='efficient',
 )
+param_sets.update(
 random_2d_conv_efficient_exps = exps_channels_and_layers(
     random_2d_conv_efficient, n_channels, layers=layer_idx)
+)
 
 ## Random CNN layer with 2 pixel shifts
 random_2d_conv_shift2 = random_2d_conv.copy()
@@ -104,8 +122,10 @@ alphas=torch.linspace(3.0, 8.0, 10)
 n_channels = alphas_to_channels(
     alphas, random_2d_conv_shift2['n_inputs'],
     int(random_2d_conv_shift2['fit_intercept']))
+param_sets.update(
 random_2d_conv_shift2_exps = exps_channels_and_layers(
     random_2d_conv_shift2, n_channels)
+)
 
 
 ## VGG11 on CIFAR10
@@ -135,23 +155,36 @@ layer_idx = [2, 3, 6]
 n_channels = alphas_to_channels(
     alphas, vgg11_cifar10['n_inputs'],
     int(vgg11_cifar10['fit_intercept']))
+param_sets.update(
 vgg11_cifar10_exps = exps_channels_and_layers(vgg11_cifar10, n_channels,
                                               layer_idx)
+)
 
 vgg11_cifar10_circular = vgg11_cifar10.copy()
 vgg11_cifar10_circular.update(
     net_style='vgg11_circular',
 )
+param_sets.update(
 vgg11_cifar10_circular_exps = exps_channels_and_layers(
     vgg11_cifar10_circular, n_channels, layer_idx)
+)
 
 vgg11_cifar10_efficient = vgg11_cifar10_circular.copy()
 vgg11_cifar10_efficient.update(
     perceptron_style='efficient',
 )
+param_sets.update(
 vgg11_cifar10_efficient_exps = exps_channels_and_layers(
     vgg11_cifar10_efficient, n_channels, layer_idx)
-
+)
+vgg11_cifar10_gpool = vgg11_cifar10_circular.copy()
+vgg11_cifar10_gpool.update(
+    pool_over_group=True,
+)
+param_sets.update(
+vgg11_cifar10_gpool_exps = exps_channels_and_layers(
+    vgg11_cifar10_gpool, n_channels, layer_idx)
+)
 ######### Not Used #############################
 ## Grid cell net
 grid_2d_conv = dict(
