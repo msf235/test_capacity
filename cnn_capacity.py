@@ -26,6 +26,8 @@ import pickle as pkl
 import numpy as np
 import warnings
 from typing import *
+import scipy.special
+lggam = scipy.special.loggamma
 
 import timm
 import models
@@ -42,9 +44,10 @@ rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 15
-n_cores = 10
+# n_cores = 10
 # n_cores = 7  
-# n_cores = 1 # setting to 1 for debugging.
+# n_cores = 5 # setting to 1 for debugging.
+n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
 # seeds = [3]
@@ -52,7 +55,7 @@ seeds = [3, 4, 5]
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
 # param_set = cp.random_2d_conv_exps
-# param_set = cp.random_1d_conv_exps
+param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
 # param_set = cp.randpoint_exps + cp.random_2d_conv_exps
 # param_set = cp.random_1d_conv_exps
@@ -61,7 +64,7 @@ seeds = [3, 4, 5]
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
 # param_set = cp.vgg11_cifar10_exps
-param_set = cp.vgg11_cifar10_efficient_exps
+# param_set = cp.vgg11_cifar10_efficient_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
 # ImageNet directory
@@ -93,7 +96,7 @@ def get_capacity(
     dataset_name='gaussianrandom', shift_style='2d', shift_x=1, shift_y=1,
     pool_over_group=False, perceptron_style='standard',
     pool=None, pool_x=None, pool_y=None,
-    fit_intercept=True, center_response=True):
+    fit_intercept=True, center_response=True, return_extra=True):
     """Take number of channels of response (n_channels) and number of input
     responses (n_inputs) and a set of hyperparameters and return the capacity
     of the representation.
@@ -163,6 +166,9 @@ def get_capacity(
     seed : int
 		Random number generator seed. Currently haven't guaranteed perfect
         reproducibility.
+    return_extra : bool
+        If True return extra information about the simulation in the form
+        of a dictionary. If False only return capacity.
     """
     if pool is None:
         pool_x = None
@@ -172,6 +178,7 @@ def get_capacity(
     loc = locals()
     args = inspect.getfullargspec(get_capacity)[0]
     params = {arg: loc[arg] for arg in args}
+    del params['return_extra']
     # warnings.filterwarnings("ignore", category=ConvergenceWarning)
     if mom.run_exists(params, output_dir) and not rerun: # Memoization
         run_id = mom.get_run_entry(params, output_dir)
@@ -179,7 +186,10 @@ def get_capacity(
         try:
             with open(run_dir + '/get_capacity.pkl', 'rb') as fid:
                 savedict = pkl.load(fid)
-            return savedict['capacity']
+            if return_extra:
+                return savedict['capacity'], savedict['overlaps']
+            else:
+                return savedict['capacity']
         except FileNotFoundError:
             pass
 
@@ -345,15 +355,13 @@ def get_capacity(
     else:
         num_workers = 0
 
-    if pool_over_group:
-        dataset = core_dataset
-    elif shift_style == '1d':
+    if shift_style == '1d':
         dataset = datasets.ShiftDataset1D(core_dataset, shift_y)
     elif shift_style == '2d':
         dataset = datasets.ShiftDataset2D(core_dataset, shift_x, shift_y)
     else:
         raise AttributeError('Unrecognized option for shift_style.')
-    if perceptron_style == 'efficient':
+    if perceptron_style == 'efficient' or pool_over_group:
         datasetfull = dataset
         dataset = core_dataset
         inputsfull = torch.stack([x[0] for x in datasetfull])
@@ -426,6 +434,7 @@ def get_capacity(
     def dich_loop(process_id=None):
         """Generates random labels and returns the accuracy of a classifier
         trained on the dataset."""
+        # torch.manual_seed(process_id)
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         while len(set(class_random_labels.tolist())) < 2:
@@ -448,7 +457,7 @@ def get_capacity(
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
             h = feature_fn(inputs)
-            if pool_over_group or perceptron_style == 'efficient':
+            if perceptron_style == 'efficient':
                 hfull = feature_fn(inputsfull)
                 Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
                 Yfull = class_random_labels[coreidxfull].numpy()
@@ -460,12 +469,27 @@ def get_capacity(
                     h12 = feature_fn(inputs12)
                     inputs22 = torch.roll(inputs21, shifts=1, dims=-1) 
                     h22 = feature_fn(inputs22)
+                    rhos = [utils.compute_avg_overlap_img(h, h22),
+                            utils.compute_avg_overlap_img(h, h21),
+                            utils.compute_avg_overlap_img(h, h22),
+                            utils.compute_avg_overlap_img(h12, h21),
+                            utils.compute_avg_overlap_img(h12, h22),
+                            utils.compute_avg_overlap_img(h21, h22)]
                     h = torch.cat((h, h21, h12, h22), dim=0)
                     Y = np.concatenate((Y,Y,Y,Y), axis=0)
                 hrs = h.reshape(*h.shape[:2], -1)
                 centroids = hrs @ Pt
                 X = centroids.reshape(centroids.shape[0], -1).numpy()
                 Yfull = (Yfull + 1)/2
+            elif pool_over_group:
+                hfull = feature_fn(inputsfull)
+                hrs = hfull.reshape(*hfull.shape[:2], -1)
+                centroids = hrs @ Pt
+                X = centroids.reshape(centroids.shape[0], -1).numpy()
+                X, u_idx = np.unique(
+                    np.round(X,7), axis=0, return_index=True)
+                Y = np.array(class_random_labels[coreidxfull])
+                Y = Y[u_idx]
             else:
                 X = h.reshape(h.shape[0], -1).numpy()
                 Y = class_random_labels[core_idx].numpy()
@@ -478,6 +502,11 @@ def get_capacity(
                 curr_avg_acc = score(wtemp, Xfull, Yfull)
             else:
                 curr_avg_acc = perceptron.score(X, Y)
+            # print(Y)
+            # fig, ax = plt.subplots()
+            # ax.scatter(X[:,0], X[:,1], c=Y)
+            # fig.savefig('figs/debug.pdf')
+            # breakpoint()
             # curr_best_loss = 1000
             # not_improved_cntr = 0
             # for epoch in range(max_epochs):
@@ -550,7 +579,8 @@ def get_capacity(
                     # break
                 if curr_avg_acc == 1.0:
                     break
-        return curr_avg_acc
+        extra_dict = {'rhos': rhos}
+        return curr_avg_acc, extra_dict
 
             ## Debug code for computing centroids directly
             # core_idx = torch.tensor(core_idx)
@@ -590,13 +620,18 @@ def get_capacity(
 
     if n_cores > 1:
         print(f"Beginning parallelized loop over {n_dichotomies} dichotomies.")
-        class_acc_dichs = Parallel(n_jobs=n_cores, batch_size=1, verbose=10)(
+        outs = Parallel(n_jobs=n_cores, batch_size=1, verbose=10)(
             delayed(dich_loop)(k1) for k1 in range(n_dichotomies))
+        class_acc_dichs = [x[0] for x in outs]
+        overlaps = [x[1] for x in outs]
     else:
         print(f"Beginning serial loop over {n_dichotomies} dichotomies.")
         class_acc_dichs = []
+        overlaps = []
         for k1 in range(n_dichotomies):
-            class_acc_dichs.append(dich_loop())
+            out = dich_loop(k1)
+            class_acc_dichs.append(out[0])
+            overlaps.append(out[1])
             print(f'Finished dichotomy: {k1+1}/{n_dichotomies}', end='\r')
 
     capacity = (1.0*(torch.tensor(class_acc_dichs) == 1.0)).mean().item()
@@ -609,9 +644,17 @@ def get_capacity(
     run_id = mom.get_run_entry(params, output_dir)
     run_dir = output_dir + f'/run_{run_id}/'
     os.makedirs(run_dir, exist_ok=True)
-    with open(run_dir + 'get_capacity.pkl', 'wb') as fid:
-        savedict = pkl.dump({'capacity': capacity}, fid)
+    if return_extra:
+        with open(run_dir + 'get_capacity.pkl', 'wb') as fid:
+            savedict = pkl.dump({'capacity': capacity,
+                                 'overlaps': overlaps}, fid)
+    else:
+        with open(run_dir + 'get_capacity.pkl', 'wb') as fid:
+            savedict = pkl.dump({'capacity': capacity}, fid)
 
+
+    if return_extra:
+        return capacity, overlaps
     return capacity
 
 def cover_theorem(P, N):
@@ -626,6 +669,7 @@ if __name__ == '__main__':
     plot_vars = ['n_channels', 'n_inputs', 'layer_idx']
 
     results_table = pd.DataFrame()
+    rhos = []
     for seed in seeds:
         for params in param_set:
             n_input = params['n_inputs']
@@ -634,8 +678,10 @@ if __name__ == '__main__':
             layer = params['layer_idx']
             offset = int(params['fit_intercept'])
             alpha = n_input / (n_channel + offset)
-            capacity = get_capacity(seed=seed, **params)
-            cover_capacity = cover_theorem(n_input, n_channel)
+            # capacity = get_capacity(seed=seed, **params)
+            capacity, extra = get_capacity(seed=seed, return_extra=True,
+                                            **params)
+            # cover_capacity = cover_theorem(n_input, n_channel)
             d1 = {'seed': seed, 'alpha': alpha, 'n_inputs': n_input,
                   'n_channels': n_channel, 'n_channels_offset':
                   n_channel + offset, 'fit_intercept': params['fit_intercept'],
@@ -644,7 +690,55 @@ if __name__ == '__main__':
                 # d1[var] = params[var]
             d1 = pd.DataFrame(d1, index=[0])
             results_table = results_table.append(d1, ignore_index=True)
+            rho = extra[0]['rhos'][1]
+            rhos.append(rho)
 
+    rho_final = sum(rhos) / len(rhos)
+    def psi2(rho):
+        # Todo: check arctan is right version
+        return (2/np.pi) * np.arctan(math.sqrt((1+rho)/(1-rho)))
+    def multinomial(n, m1, m2):
+        if n - m1 - m2 + 1 <= 0:
+            return 0
+        if m2+1 <= 0:
+            return 0
+        if m1+1 <= 0:
+            return 0
+        logmult = lggam(n+1) - lggam(m1+1) - lggam(m2+1) - lggam(n-m1-m2+1)
+        return math.exp(logmult)
+
+    def K(i, p, rho):
+        sumt = 0
+        for m in range(p):
+            n = p-1
+            m1 = m
+            m2 = i - 2*m
+            if n - m1 - m2 < 0 or m2 < 0 or m1 < 0:
+                sumt += 0
+            else:
+                logmult = lggam(n+1) - lggam(m1+1) - lggam(m2+1) \
+                        - lggam(n-m1-m2+1)
+                logc1 = (p-1-i+m)*np.log(psi2(rho))
+                logc2 = m*np.log(1-psi2(rho))
+                sumt += np.exp(logmult + logc1 + logc2)
+            # print(sumt)
+            
+            # multi = multinomial(p-1, m, i - 2*m)
+            # c1 = psi2(rho)**(p-1-i+m)
+            # c2 = (1-psi2(rho))**m
+            # sumt += multi*c1*c2
+            # print(multi)
+        return sumt
+
+    def cover2(n,p,rho):
+        sumt = 0
+        for i in range(n-1):
+            sumt += K(i, p, rho)
+            # print()
+        c = 2 * psi2(rho)*K(n-1,p,rho)
+        return (2*sumt + c)/2**p # Todo: make more stable
+
+    # s = cover2(6, 4, rho)
     for catcol in ('layer',):
         results_table[catcol] = results_table[catcol].astype('category')
 
@@ -670,8 +764,19 @@ if __name__ == '__main__':
     alphamax = results_table['alpha'].max()
     cover_cap = {p/n: cover_theorem(p, n) for n in range(nmin, nmax+1)
                 for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
+    
+    cover_cap_maxpool = {p/n: cover2(n, p, rho_final)
+                         for n in range(nmin, nmax+1)
+                         for p in range(pmin, pmax+1)
+                         if alphamin <= p/n <= alphamax}
+    # cover_cap_maxpool = {p/n: cover_theorem(p, int(n/2))
+                         # for n in range(nmin, nmax+1)
+                         # for p in range(pmin, pmax+1)
+                         # if alphamin <= p/n <= alphamax}
     ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='dotted',
            color='black', label='theory')
+    ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()),
+            linestyle='dotted', color='red', label='theory max pool')
     ax.legend()
     ax.set_ylim([-.01, 1.01])
     fig.savefig('figs/most_recent.pdf')
