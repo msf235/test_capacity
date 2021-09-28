@@ -124,8 +124,8 @@ vgg11_cifar10 = dict(
 )
 alphas = torch.linspace(0.5, 3.0, 15)
 # alphas = torch.linspace(1.8, 2.2, 1)
-layer_idx = [2, 3, 6]
-# layer_idx = [2]
+# layer_idx = [2, 3, 6]
+layer_idx = [3]
 n_channels = alphas_to_channels(
     alphas, vgg11_cifar10['n_inputs'],
     int(vgg11_cifar10['fit_intercept']))

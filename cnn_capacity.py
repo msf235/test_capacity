@@ -36,18 +36,18 @@ import cnn_capacity_params as cp
 import datasets
 import cnn_capacity_utils as utils
 
-output_dir = 'output'
+output_dir = 'output_maxpool'
 fig_dir = 'figs'
 # rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
-# n_cores = 15
+n_cores = 15
 # n_cores = 10
 # n_cores = 7  
 # n_cores = 5 # setting to 1 for debugging.
-n_cores = 1 # setting to 1 for debugging.
+# n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
 # seeds = [3]
@@ -55,7 +55,7 @@ seeds = [3, 4, 5]
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
 # param_set = cp.random_2d_conv_exps
-param_set = cp.random_1d_conv_exps
+# param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
 # param_set = cp.randpoint_exps + cp.random_2d_conv_exps
 # param_set = cp.random_1d_conv_exps
@@ -64,7 +64,7 @@ param_set = cp.random_1d_conv_exps
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
 # param_set = cp.vgg11_cifar10_exps
-# param_set = cp.vgg11_cifar10_efficient_exps
+param_set = cp.vgg11_cifar10_efficient_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
 # ImageNet directory
@@ -457,6 +457,7 @@ def get_capacity(
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
             h = feature_fn(inputs)
+            rhos = []
             if perceptron_style == 'efficient':
                 hfull = feature_fn(inputsfull)
                 Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
