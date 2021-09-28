@@ -70,7 +70,7 @@ n_channels = alphas_to_channels(
     alphas, randpoint['n_inputs'], int(randpoint['fit_intercept']))
 randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
 
-# Random CNN layer
+## Random CNN layer
 random_2d_conv = random_1d_conv.copy()
 random_2d_conv.update(
     perceptron_style='standard',
@@ -87,8 +87,14 @@ n_channels = alphas_to_channels(
 random_2d_conv_exps = exps_channels_and_layers(
     random_2d_conv, n_channels, layers=layer_idx)
 
+random_2d_conv_efficient = random_2d_conv.copy()
+random_2d_conv_efficient.update(
+    perceptron_style='efficient',
+)
+random_2d_conv_efficient_exps = exps_channels_and_layers(
+    random_2d_conv_efficient, n_channels, layers=layer_idx)
 
-# Random CNN layer with 2 pixel shifts
+## Random CNN layer with 2 pixel shifts
 random_2d_conv_shift2 = random_2d_conv.copy()
 random_2d_conv_shift2.update(
     shift_x=2,

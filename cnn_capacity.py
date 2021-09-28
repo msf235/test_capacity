@@ -47,11 +47,12 @@ n_cores = 10
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
-# seeds = [3]
+# seeds = [3, 4]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
 # param_set = cp.random_2d_conv_exps
+param_set = cp.random_2d_conv_efficient_exps
 # param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
 # param_set = cp.randpoint_exps + cp.random_2d_conv_exps
@@ -61,7 +62,8 @@ seeds = [3, 4, 5]
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
 # param_set = cp.vgg11_cifar10_exps
-param_set = cp.vgg11_cifar10_efficient_exps
+# param_set = cp.vgg11_cifar10_circular_exps
+# param_set = cp.vgg11_cifar10_efficient_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
 # ImageNet directory
@@ -658,10 +660,10 @@ if __name__ == '__main__':
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
     fig, ax = plt.subplots()
-    # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 # hue='layer', style=style)
     sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 hue=style)
+                 hue='layer', style=style)
+    # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 # hue=style)
     nmin = results_table['n_channels_offset'].min()
     nmax = results_table['n_channels_offset'].max()
     pmin = results_table['n_inputs'].min()
@@ -670,8 +672,12 @@ if __name__ == '__main__':
     alphamax = results_table['alpha'].max()
     cover_cap = {p/n: cover_theorem(p, n) for n in range(nmin, nmax+1)
                 for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
+    cover_cap_maxpool = {p/n: cover_theorem(2*p, n) for n in range(nmin, nmax+1)
+                for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
     ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='dotted',
-           color='black', label='theory')
+           color='blue', label='theory')
+    ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()), linestyle='dotted',
+           color='red', label='theory maxpool')
     ax.legend()
     ax.set_ylim([-.01, 1.01])
     fig.savefig('figs/most_recent.pdf')
