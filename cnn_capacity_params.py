@@ -29,7 +29,7 @@ def exps_channels_and_layers(param_base, n_channels, layers=None):
 ## One-dimensional random CNN layer.
 random_1d_conv = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
-    n_inputs = 40, # Number of input samples to test
+    n_inputs = 20, # Number of input samples to test
     # n_inputs = 3, # Number of input samples to test
     max_epochs = 4000, # Maximum number of epochs.
     # max_epochs_no_imp = 200,
