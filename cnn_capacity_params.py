@@ -30,6 +30,7 @@ def exps_channels_and_layers(param_base, n_channels, layers=None):
 random_1d_conv = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
     n_inputs = 40, # Number of input samples to test
+    # n_inputs = 3, # Number of input samples to test
     max_epochs = 4000, # Maximum number of epochs.
     # max_epochs_no_imp = 200,
     # improve_tol = 1e-10
@@ -43,23 +44,24 @@ random_1d_conv = dict(
     dataset_name = 'gaussianrandom', # Use Gaussian random inputs.
     # img_channels = 100,
     img_channels = 3,
-    # perceptron_style = 'efficient',
+    perceptron_style = 'efficient',
     shift_style = '2d', # Use input shifts in both x and y dimensions
     shift_x = 1, # Number of pixels by which to shift in the x direction
     shift_y = 1, # Number of pixels by which to shift in the y direction
     pool_over_group = False, # group before fitting the linear classifier.
     pool='max', 
     # pool=None,
-    # pool_x = 2,
-    # pool_y = 1,
+    pool_x = 2,
+    pool_y = 1,
     fit_intercept = False,
     center_response = False,
 )
 alphas = torch.linspace(0.5, 3.0, 15)
-layer_idx = [1, 2]
-# alphas = torch.linspace(1.5, 2.0, 2)
+layer_idx = [2]
+# alphas = torch.linspace(0.6, 0.7, 1)
 n_channels = alphas_to_channels(alphas, random_1d_conv['n_inputs'],
     int(random_1d_conv['fit_intercept']))
+# n_channels = [6]
 random_1d_conv_exps = exps_channels_and_layers(random_1d_conv, n_channels,
                                               layers=layer_idx)
 
@@ -74,18 +76,26 @@ randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
 random_2d_conv = random_1d_conv.copy()
 random_2d_conv.update(
     perceptron_style='standard',
+    # perceptron_style='efficient',
     img_size_x = 10,
     img_size_y = 10,
+    n_inputs = 2, # Number of input samples to test
+    n_channels = 2,
     pool_x = 2,
-    pool_y = 2
+    pool_y = 2,
+    layer_idx = 2,
+    pool_over_group=True,
 )
-alphas = torch.linspace(0.5, 3.0, 10)
-layer_idx = [1, 2]
-n_channels = alphas_to_channels(
-    alphas, random_2d_conv['n_inputs'],
-    int(random_2d_conv['fit_intercept']))
-random_2d_conv_exps = exps_channels_and_layers(
-    random_2d_conv, n_channels, layers=layer_idx)
+random_2d_conv_exps = [random_2d_conv]
+# alphas = torch.linspace(0.5, 3.0, 10)
+# alphas = torch.linspace(0.6, .8, 1)
+# layer_idx = [1, 2]
+# layer_idx = [2]
+# n_channels = alphas_to_channels(
+    # alphas, random_2d_conv['n_inputs'],
+    # int(random_2d_conv['fit_intercept']))
+# random_2d_conv_exps = exps_channels_and_layers(
+    # random_2d_conv, n_channels, layers=layer_idx)
 
 
 # Random CNN layer with 2 pixel shifts
