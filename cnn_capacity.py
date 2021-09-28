@@ -36,9 +36,9 @@ import cnn_capacity_utils as utils
 
 output_dir = 'output'
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-rerun = False
+# rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 15
@@ -52,7 +52,7 @@ seeds = [3, 4, 5]
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
 # param_set = cp.random_2d_conv_exps
-param_set = cp.random_2d_conv_efficient_exps
+# param_set = cp.random_2d_conv_efficient_exps
 # param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
 # param_set = cp.randpoint_exps + cp.random_2d_conv_exps
@@ -64,7 +64,13 @@ param_set = cp.random_2d_conv_efficient_exps
 # param_set = cp.vgg11_cifar10_exps
 # param_set = cp.vgg11_cifar10_circular_exps
 # param_set = cp.vgg11_cifar10_efficient_exps
+# param_set = cp.vgg11_cifar10_gpool_exps
+# param_set = cp.vgg11_cifar10_efficient_exps + cp.vgg11_cifar10_gpool_exps
+param_set = cp.vgg11_cifar10_gpool_exps
+# param_set = cp.random_2d_conv_exps + cp.random_2d_conv_gpool_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
+
+# param_set = cp.vgg11_cifar10_efficient_exps
 
 # ImageNet directory
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -451,9 +457,11 @@ def get_capacity(
             core_idx = dataloader[0][2]
             h = feature_fn(inputs)
             if pool_over_group or perceptron_style == 'efficient':
-                hfull = feature_fn(inputsfull)
-                Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
-                Yfull = class_random_labels[coreidxfull].numpy()
+                if perceptron_style == 'efficient':
+                    hfull = feature_fn(inputsfull)
+                    Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
+                    Yfull = class_random_labels[coreidxfull].numpy()
+                    Yfull = (Yfull + 1)/2
                 Y = np.array(class_random_labels)
                 if pool_efficient_shift == 1:
                     inputs21 = torch.roll(inputs, shifts=1, dims=-2) 
@@ -467,7 +475,6 @@ def get_capacity(
                 hrs = h.reshape(*h.shape[:2], -1)
                 centroids = hrs @ Pt
                 X = centroids.reshape(centroids.shape[0], -1).numpy()
-                Yfull = (Yfull + 1)/2
             else:
                 X = h.reshape(h.shape[0], -1).numpy()
                 Y = class_random_labels[core_idx].numpy()
@@ -638,10 +645,12 @@ if __name__ == '__main__':
             alpha = n_input / (n_channel + offset)
             capacity = get_capacity(seed=seed, **params)
             cover_capacity = cover_theorem(n_input, n_channel)
+            pool_over_group = params['pool_over_group']
             d1 = {'seed': seed, 'alpha': alpha, 'n_inputs': n_input,
                   'n_channels': n_channel, 'n_channels_offset':
                   n_channel + offset, 'fit_intercept': params['fit_intercept'],
-                  'layer': layer, 'net_style': net_style, 'capacity': capacity}
+                  'layer': layer, 'net_style': net_style, 'capacity': capacity,
+                  'pool_over_group': pool_over_group}
             # for var in plot_vars:
                 # d1[var] = params[var]
             d1 = pd.DataFrame(d1, index=[0])
@@ -654,12 +663,14 @@ if __name__ == '__main__':
         style = 'net_style'
     else:
         style = None
+    style = 'pool_over_group'
     os.makedirs('figs', exist_ok=True)
     results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
-    fig, ax = plt.subplots()
+    
+    fig, ax = plt.subplots(figsize=(5,4))
     sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  hue='layer', style=style)
     # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
@@ -676,9 +687,9 @@ if __name__ == '__main__':
                 for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
     ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='dotted',
            color='blue', label='theory')
-    ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()), linestyle='dotted',
-           color='red', label='theory maxpool')
+    # ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()), linestyle='dotted',
+           # color='red', label='theory maxpool')
     ax.legend()
     ax.set_ylim([-.01, 1.01])
-    fig.savefig('figs/most_recent.pdf')
+    fig.savefig('figs/most_recent.pdf', bbox_inches='tight')
 

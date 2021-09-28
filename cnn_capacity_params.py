@@ -94,6 +94,13 @@ random_2d_conv_efficient.update(
 random_2d_conv_efficient_exps = exps_channels_and_layers(
     random_2d_conv_efficient, n_channels, layers=layer_idx)
 
+random_2d_conv_gpool = random_2d_conv.copy()
+random_2d_conv_gpool.update(
+    pool_over_group=True
+)
+random_2d_conv_gpool_exps = exps_channels_and_layers(
+    random_2d_conv_gpool, n_channels, layers=layer_idx)
+
 ## Random CNN layer with 2 pixel shifts
 random_2d_conv_shift2 = random_2d_conv.copy()
 random_2d_conv_shift2.update(
@@ -151,6 +158,13 @@ vgg11_cifar10_efficient.update(
 )
 vgg11_cifar10_efficient_exps = exps_channels_and_layers(
     vgg11_cifar10_efficient, n_channels, layer_idx)
+
+vgg11_cifar10_gpool = vgg11_cifar10_circular.copy()
+vgg11_cifar10_gpool.update(
+    pool_over_group=True,
+)
+vgg11_cifar10_gpool_exps = exps_channels_and_layers(
+    vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])
 
 ######### Not Used #############################
 ## Grid cell net
