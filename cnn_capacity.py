@@ -51,7 +51,6 @@ seeds = [3, 4, 5]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
-<<<<<<< HEAD
 # param_set_name = 'random_1d_conv_exps'
 # param_set_name = 'randpoint_exps'
 # param_set_name = 'random_1d_conv_exps'
