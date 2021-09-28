@@ -166,6 +166,8 @@ param_sets.update(
 vgg11_cifar10_exps = exps_channels_and_layers(vgg11_cifar10, n_channels,
                                               layer_idx)
 )
+vgg11_cifar10_exps = exps_channels_and_layers(vgg11_cifar10, n_channels,
+                                              layer_idx)
 
 vgg11_cifar10_circular = vgg11_cifar10.copy()
 vgg11_cifar10_circular.update(
@@ -193,6 +195,9 @@ param_sets.update(
 vgg11_cifar10_gpool_exps = exps_channels_and_layers(
     vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])
 )
+# vgg11_cifar10_gpool_exps = exps_channels_and_layers(
+    # vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])
+
 
 ######### Not Used #############################
 ## Grid cell net

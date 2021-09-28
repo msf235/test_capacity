@@ -72,6 +72,7 @@ for name in param_set_names:
     for ps in cp.param_sets[name]:
         param_set.append(ps)
 
+
 # param_set = cp.param_sets[param_set_name]
 # param_set = cp.rrandom_2d_conv_maxpool2_expsandom_2d_conv_exps
 # param_set = cp.random_2d_conv_exps
@@ -84,12 +85,12 @@ for name in param_set_names:
 # param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
-# param_set = cp.vgg11_cifar10_exps
+param_set = cp.vgg11_cifar10_exps
 # param_set = cp.vgg11_cifar10_circular_exps
 # param_set = cp.vgg11_cifar10_efficient_exps
 # param_set = cp.vgg11_cifar10_gpool_exps
 # param_set = cp.vgg11_cifar10_efficient_exps + cp.vgg11_cifar10_gpool_exps
-param_set = cp.vgg11_cifar10_gpool_exps
+# param_set = cp.vgg11_cifar10_gpool_exps
 # param_set = cp.random_2d_conv_exps + cp.random_2d_conv_gpool_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
