@@ -55,7 +55,7 @@ seeds = [3, 4, 5]
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
 # param_set = cp.random_2d_conv_exps
-# param_set = cp.random_1d_conv_exps
+param_set = cp.random_1d_conv_exps
 # param_set = cp.randpoint_exps
 # param_set = cp.randpoint_exps + cp.random_2d_conv_exps
 # param_set = cp.random_1d_conv_exps
@@ -64,7 +64,7 @@ seeds = [3, 4, 5]
                                                 # warnings. This is a
                                                 # documented bug in pytorch.
 # param_set = cp.vgg11_cifar10_exps
-param_set = cp.vgg11_cifar10_efficient_exps
+# param_set = cp.vgg11_cifar10_efficient_exps
 # param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
 
 # ImageNet directory
