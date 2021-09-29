@@ -75,6 +75,14 @@ n_channels = alphas_to_channels(
 param_sets.update(
 randpoint_exps = exps_channels_and_layers(randpoint, n_channels)
 )
+randpoint_efficient = randpoint.copy()
+randpoint_efficient.update(
+    perceptron_style = 'efficient'
+)
+param_sets.update(
+randpoint_efficient_exps = exps_channels_and_layers(randpoint_efficient,
+                                                    n_channels)
+)
 
 ## Random CNN layer
 random_2d_conv = random_1d_conv.copy()
@@ -85,7 +93,8 @@ random_2d_conv.update(
     pool_x = 2,
     pool_y = 2
 )
-alphas = torch.linspace(0.5, 3.0, 10)
+alphas = torch.cat((torch.linspace(0.5, 1.0, 10), torch.linspace(1.0, 3.0, 10)),
+                   dim=0)
 layer_idx = [1, 2]
 n_channels = alphas_to_channels(
     alphas, random_2d_conv['n_inputs'],
@@ -137,7 +146,9 @@ random_2d_conv_shift2_exps = exps_channels_and_layers(
 
 ## VGG11 on CIFAR10
 vgg11_cifar10 = dict(
-    n_dichotomies = 100, # Number of random dichotomies to test
+    # n_dichotomies = 100, # Number of random dichotomies to test
+    n_dichotomies = 20, # Number of random dichotomies to test
+    # n_dichotomies = 2, # Number of random dichotomies to test
     n_inputs = 12, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
     batch_size = None, # Batch size if training with SGD.
@@ -155,10 +166,10 @@ vgg11_cifar10 = dict(
     fit_intercept = False, 
     center_response = False,  # response 
 )
-alphas = torch.linspace(0.5, 3.0, 15)
-# alphas = torch.linspace(1.8, 2.2, 1)
-layer_idx = [2, 3, 6]
-# layer_idx = [2]
+# alphas = torch.linspace(0.5, 3.0, 15)
+alphas = torch.linspace(1.8, 2.2, 1)
+# layer_idx = [2, 3, 6]
+layer_idx = [3]
 n_channels = alphas_to_channels(
     alphas, vgg11_cifar10['n_inputs'],
     int(vgg11_cifar10['fit_intercept']))
@@ -184,7 +195,10 @@ vgg11_cifar10_efficient.update(
 )
 param_sets.update(
 vgg11_cifar10_efficient_exps = exps_channels_and_layers(
-    vgg11_cifar10_efficient, n_channels, layer_idx)
+    vgg11_cifar10_efficient, n_channels,
+    # layer_idx[-2:-1],
+    layer_idx,
+)
 )
 
 vgg11_cifar10_gpool = vgg11_cifar10_circular.copy()
@@ -193,7 +207,7 @@ vgg11_cifar10_gpool.update(
 )
 param_sets.update(
 vgg11_cifar10_gpool_exps = exps_channels_and_layers(
-    vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])
+    vgg11_cifar10_gpool, n_channels, layer_idx)
 )
 # vgg11_cifar10_gpool_exps = exps_channels_and_layers(
     # vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])

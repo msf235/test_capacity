@@ -36,23 +36,22 @@ import cnn_capacity_utils as utils
 
 output_dir = 'output'
 fig_dir = 'figs'
-rerun = True # If True, rerun the simulation even if a matching simulation is
+# rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-# rerun = False
+rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 15
-n_cores = 10
-# n_cores = 7  
+# n_cores = 10
+# n_cores = 7
+n_cores = 5
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
-# seeds = [3, 4]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
 # param_set_name = 'random_1d_conv_exps'
-# param_set_name = 'randpoint_exps'
 # param_set_name = 'random_1d_conv_exps'
 # param_set_name = 'random_2d_conv_exps'
 # param_set_name = 'random_2d_conv_shift2_exps'
@@ -60,41 +59,19 @@ seeds = [3, 4, 5]
 # param_set_name = 'vgg11_cifar10_circular_exps'
 # param_set_name = 'vgg11_cifar10_efficient_exps'
 
-# param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
+# param_set_names = ['randpoint_exps']
+# param_set_names = ['randpoint_efficient_exps']
+param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps']
-param_set_names = ['vgg11_cifar10_gpool_exps']
+# param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
 # param_set_names = ['random_2d_conv_gpool_exps']
 # param_set_names = ['random_2d_conv_efficient_exps']
+# param_set_names += ['vgg11_cifar10_exps']
 
 param_set = []
 for name in param_set_names:
-    for ps in cp.param_sets[name]:
-        param_set.append(ps)
-
-
-# param_set = cp.param_sets[param_set_name]
-# param_set = cp.rrandom_2d_conv_maxpool2_expsandom_2d_conv_exps
-# param_set = cp.random_2d_conv_exps
-# param_set = cp.random_2d_conv_efficient_exps
-# param_set = cp.random_1d_conv_exps
-# param_set = cp.randpoint_exps
-# param_set = cp.randpoint_exps + cp.random_2d_conv_exps
-# param_set = cp.random_1d_conv_exps
-# param_set = cp.random_2d_conv_shift2_exps
-# param_set = cp.random_2d_conv_maxpool2_exps.copy() # Note that MaxPool2d spits out
-                                                # warnings. This is a
-                                                # documented bug in pytorch.
-param_set = cp.vgg11_cifar10_exps
-# param_set = cp.vgg11_cifar10_circular_exps
-# param_set = cp.vgg11_cifar10_efficient_exps
-# param_set = cp.vgg11_cifar10_gpool_exps
-# param_set = cp.vgg11_cifar10_efficient_exps + cp.vgg11_cifar10_gpool_exps
-# param_set = cp.vgg11_cifar10_gpool_exps
-# param_set = cp.random_2d_conv_exps + cp.random_2d_conv_gpool_exps
-# param_set = cp.random_2d_conv_exps + cp.vgg11_cifar10_exps
-
-# param_set = cp.vgg11_cifar10_efficient_exps
+    param_set += cp.param_sets[name]
 
 # ImageNet directory
 image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
@@ -253,11 +230,12 @@ def get_capacity(
                 feats = net.get_features(inputs, layer_idx)
                 feats = feats[:, :n_channels]
                 return feats
-        if perceptron_style == 'efficient' and layer > 2:
-            if layer > 6:
-                raise AttributeError("""This parameter combination not
-                                     supported.""")
-            pool_efficient_shift = 1
+        if perceptron_style == 'efficient' or pool_over_group:
+            if layer_idx > 2:
+                if layer_idx > 6:
+                    raise AttributeError("""This parameter combination not
+                                         supported.""")
+                pool_efficient_shift = 1
 
     elif net_style == 'alexnet':
         net = models.alexnet(pretrained=True)
@@ -307,8 +285,9 @@ def get_capacity(
             elif pool == 'mean':
                 pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
                                                 (pool_x, pool_y)) 
-            if layer > 1:
-                pool_efficient_shift = 1
+            if pool is not None or pool_over_group:
+                if layer > 1:
+                    pool_efficient_shift = 1
             layers.append(pool_layer)
         layers = layers[:layer_idx+1]
         net = torch.nn.Sequential(*layers)
@@ -449,7 +428,15 @@ def get_capacity(
     
     def score(w, X, Y):
         Ytilde = X @ w
-        return np.mean(np.sign(Ytilde-.5) == np.sign(Y-.5))
+        return np.mean(np.sign(Ytilde) == np.sign(Y-.5))
+        # return np.mean(np.sign(Ytilde-.5) == np.sign(Y-.5))
+
+    def sigmoid(x):
+        return 1/(1+np.exp(-x))
+    def log_regscore(w, X, Y):
+        Ytilde = X @ w
+        ps = sigmoid(Ytilde)
+        return np.mean(np.sign(ps-.5) == np.sign(Y-.5))
 
     def class_acc(outs, targets):
         correct = 1.0*(outs * random_labels > 0)
@@ -458,21 +445,22 @@ def get_capacity(
     def dich_loop(process_id=None):
         """Generates random labels and returns the accuracy of a classifier
         trained on the dataset."""
+        np.random.seed(seed)
+        rndseed = np.random.randint(10000)
+        torch.manual_seed(process_id + rndseed)  # Be very careful with this
+        # np.random.seed(process_id+rndseed) 
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
+        # if process_id == 0:
+        print(class_random_labels)
         while len(set(class_random_labels.tolist())) < 2:
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         # perceptron = linear_model.SGDClassifier(
             # tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
             # max_iter=max_epochs)
-        # perceptron = linear_model.SGDClassifier(
-            # tol=1e-18, alpha=1e-6, fit_intercept=fit_intercept,
-            # max_iter=max_epochs, random_state=seed)
-            # curr_best_loss = 100.0
-            # num_no_imp = 0
         perceptron = linear_model.LogisticRegression(
             tol=1e-18, C=1e8, fit_intercept=fit_intercept,
-            max_iter=max_epochs, random_state=seed)
+            max_iter=max_epochs, random_state=seed + rndseed)
         # perceptron = svm.LinearSVC(
             # tol=1e-18, C=1e8, fit_intercept=fit_intercept,
             # max_iter=max_epochs, random_state=seed)
@@ -511,6 +499,9 @@ def get_capacity(
                 curr_avg_acc = score(wtemp, Xfull, Yfull)
             else:
                 curr_avg_acc = perceptron.score(X, Y)
+
+            if process_id == 0:
+                print(perceptron.coef_)
             # curr_best_loss = 1000
             # not_improved_cntr = 0
             # for epoch in range(max_epochs):
@@ -629,7 +620,7 @@ def get_capacity(
         print(f"Beginning serial loop over {n_dichotomies} dichotomies.")
         class_acc_dichs = []
         for k1 in range(n_dichotomies):
-            class_acc_dichs.append(dich_loop())
+            class_acc_dichs.append(dich_loop(k1))
             print(f'Finished dichotomy: {k1+1}/{n_dichotomies}', end='\r')
 
     capacity = (1.0*(torch.tensor(class_acc_dichs) == 1.0)).mean().item()
@@ -661,14 +652,14 @@ if __name__ == '__main__':
     results_table = pd.DataFrame()
     for seed in seeds:
         for params in param_set:
+            capacity = get_capacity(seed=seed, **params)
+            layer = params['layer_idx']
             n_input = params['n_inputs']
             n_channel = params['n_channels']
             net_style = params['net_style']
-            layer = params['layer_idx']
             offset = int(params['fit_intercept'])
             pool_over_group = params['pool_over_group']
             alpha = n_input / (n_channel + offset)
-            capacity = get_capacity(seed=seed, **params)
             cover_capacity = cover_theorem(n_input, n_channel)
             pool_over_group = params['pool_over_group']
             d1 = {'seed': seed, 'alpha': alpha, 'n_inputs': n_input,
@@ -696,8 +687,10 @@ if __name__ == '__main__':
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
     fig, ax = plt.subplots(figsize=(5,4))
-    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 hue='layer', style=style)
+    # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 # hue='layer', style=style)
+    sns.boxplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 hue=style)
     # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  # hue=style)
     nmin = results_table['n_channels_offset'].min()
@@ -717,4 +710,5 @@ if __name__ == '__main__':
     ax.legend()
     ax.set_ylim([-.01, 1.01])
     fig.savefig('figs/most_recent.pdf', bbox_inches='tight')
+    breakpoint()
 
