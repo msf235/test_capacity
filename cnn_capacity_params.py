@@ -32,6 +32,7 @@ param_sets = {}
 random_1d_conv = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
     n_inputs = 40, # Number of input samples to test
+    # n_inputs = 30, # Number of input samples to test
     max_epochs = 4000, # Maximum number of epochs.
     # max_epochs_no_imp = 200,
     # improve_tol = 1e-10
@@ -146,10 +147,10 @@ random_2d_conv_shift2_exps = exps_channels_and_layers(
 
 ## VGG11 on CIFAR10
 vgg11_cifar10 = dict(
-    # n_dichotomies = 100, # Number of random dichotomies to test
-    n_dichotomies = 20, # Number of random dichotomies to test
+    n_dichotomies = 100, # Number of random dichotomies to test
+    # n_dichotomies = 20, # Number of random dichotomies to test
     # n_dichotomies = 2, # Number of random dichotomies to test
-    n_inputs = 12, # Number of input samples to test
+    n_inputs = 20, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
     batch_size = None, # Batch size if training with SGD.
     img_size_x = 32, # Size of image x dimension.
@@ -166,10 +167,10 @@ vgg11_cifar10 = dict(
     fit_intercept = False, 
     center_response = False,  # response 
 )
-# alphas = torch.linspace(0.5, 3.0, 15)
-alphas = torch.linspace(1.8, 2.2, 1)
-# layer_idx = [2, 3, 6]
-layer_idx = [3]
+alphas = torch.linspace(0.5, 3.0, 15)
+# alphas = torch.linspace(1.8, 2.2, 1)
+layer_idx = [2, 3, 6]
+# layer_idx = [3]
 n_channels = alphas_to_channels(
     alphas, vgg11_cifar10['n_inputs'],
     int(vgg11_cifar10['fit_intercept']))
@@ -209,6 +210,36 @@ param_sets.update(
 vgg11_cifar10_gpool_exps = exps_channels_and_layers(
     vgg11_cifar10_gpool, n_channels, layer_idx)
 )
+
+vgg11_cifar10_gpool_lay2 = vgg11_cifar10_gpool.copy()
+vgg11_cifar10_gpool_lay2.update(
+    layer_idx=2,
+    n_inputs=20,
+)
+n_channels = alphas_to_channels(
+    alphas, vgg11_cifar10_gpool_lay2['n_inputs'],
+    int(vgg11_cifar10['fit_intercept']))
+vgg11_cifar10_gpool_lay2_exps = exps_channels_and_layers(
+    vgg11_cifar10_gpool_lay2, n_channels)
+
+vgg11_cifar10_gpool_lay3 = vgg11_cifar10_gpool.copy()
+vgg11_cifar10_gpool_lay3.update(
+    layer_idx=3,
+    n_inputs=20,
+)
+n_channels = alphas_to_channels(
+    alphas, vgg11_cifar10_gpool_lay3['n_inputs'],
+    int(vgg11_cifar10['fit_intercept']))
+vgg11_cifar10_gpool_lay3_exps = exps_channels_and_layers(
+    vgg11_cifar10_gpool_lay3, n_channels)
+
+vgg11_cifar10_gpool_lay6 = vgg11_cifar10_gpool.copy()
+vgg11_cifar10_gpool_lay6.update(
+    layer_idx=6,
+    n_inputs=20,
+)
+vgg11_cifar10_gpool_lay3_exps = exps_channels_and_layers(
+    vgg11_cifar10_gpool_lay3, n_channels)
 # vgg11_cifar10_gpool_exps = exps_channels_and_layers(
     # vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])
 
