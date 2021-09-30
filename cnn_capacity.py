@@ -41,10 +41,10 @@ fig_dir = 'figs'
 rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
-# n_cores = 15
-# n_cores = 10
+n_cores = 15
+# n_cores = 20
 # n_cores = 7
-n_cores = 5
+# n_cores = 5
 # n_cores = 1 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
@@ -63,11 +63,13 @@ seeds = [3, 4, 5]
 # param_set_names = ['randpoint_efficient_exps']
 param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps']
+# param_set_names = ['vgg11_cifar10_circular_exps']
 # param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
 # param_set_names = ['random_2d_conv_gpool_exps']
 # param_set_names = ['random_2d_conv_efficient_exps']
-# param_set_names += ['vgg11_cifar10_exps']
+# param_set_names = ['vgg11_cifar10_exps']
+print('Running {}'.format('  '.join(param_set_names)))
 
 param_set = []
 for name in param_set_names:
@@ -286,7 +288,7 @@ def get_capacity(
                 pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
                                                 (pool_x, pool_y)) 
             if pool is not None or pool_over_group:
-                if layer > 1:
+                if layer_idx > 1:
                     pool_efficient_shift = 1
             layers.append(pool_layer)
         layers = layers[:layer_idx+1]
@@ -451,8 +453,6 @@ def get_capacity(
         # np.random.seed(process_id+rndseed) 
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
-        # if process_id == 0:
-        print(class_random_labels)
         while len(set(class_random_labels.tolist())) < 2:
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         # perceptron = linear_model.SGDClassifier(
@@ -500,8 +500,6 @@ def get_capacity(
             else:
                 curr_avg_acc = perceptron.score(X, Y)
 
-            if process_id == 0:
-                print(perceptron.coef_)
             # curr_best_loss = 1000
             # not_improved_cntr = 0
             # for epoch in range(max_epochs):
@@ -651,7 +649,8 @@ if __name__ == '__main__':
 
     results_table = pd.DataFrame()
     for seed in seeds:
-        for params in param_set:
+        for i0, params in enumerate(param_set):
+            print(f"Starting param set {i0}/{len(param_set)} with seed {seed}")
             capacity = get_capacity(seed=seed, **params)
             layer = params['layer_idx']
             n_input = params['n_inputs']
@@ -687,10 +686,10 @@ if __name__ == '__main__':
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
     fig, ax = plt.subplots(figsize=(5,4))
-    # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 # hue='layer', style=style)
-    sns.boxplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 hue=style)
+    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 hue='layer', style=style)
+    # sns.boxplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 # hue=style)
     # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  # hue=style)
     nmin = results_table['n_channels_offset'].min()
@@ -709,6 +708,6 @@ if __name__ == '__main__':
            # color='red', label='theory maxpool')
     ax.legend()
     ax.set_ylim([-.01, 1.01])
-    fig.savefig('figs/most_recent.pdf', bbox_inches='tight')
-    breakpoint()
+    figname = '__'.join(param_set_names)
+    fig.savefig(f'figs/{figname}.pdf', bbox_inches='tight')
 

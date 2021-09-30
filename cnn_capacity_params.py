@@ -32,6 +32,7 @@ param_sets = {}
 random_1d_conv = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
     n_inputs = 40, # Number of input samples to test
+    # n_inputs = 30, # Number of input samples to test
     max_epochs = 4000, # Maximum number of epochs.
     # max_epochs_no_imp = 200,
     # improve_tol = 1e-10
@@ -146,8 +147,8 @@ random_2d_conv_shift2_exps = exps_channels_and_layers(
 
 ## VGG11 on CIFAR10
 vgg11_cifar10 = dict(
-    # n_dichotomies = 100, # Number of random dichotomies to test
-    n_dichotomies = 20, # Number of random dichotomies to test
+    n_dichotomies = 100, # Number of random dichotomies to test
+    # n_dichotomies = 20, # Number of random dichotomies to test
     # n_dichotomies = 2, # Number of random dichotomies to test
     n_inputs = 12, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
@@ -166,10 +167,10 @@ vgg11_cifar10 = dict(
     fit_intercept = False, 
     center_response = False,  # response 
 )
-# alphas = torch.linspace(0.5, 3.0, 15)
-alphas = torch.linspace(1.8, 2.2, 1)
-# layer_idx = [2, 3, 6]
-layer_idx = [3]
+alphas = torch.linspace(0.5, 3.0, 15)
+# alphas = torch.linspace(1.8, 2.2, 1)
+layer_idx = [2, 3, 6]
+# layer_idx = [3]
 n_channels = alphas_to_channels(
     alphas, vgg11_cifar10['n_inputs'],
     int(vgg11_cifar10['fit_intercept']))
@@ -208,6 +209,10 @@ vgg11_cifar10_gpool.update(
 param_sets.update(
 vgg11_cifar10_gpool_exps = exps_channels_and_layers(
     vgg11_cifar10_gpool, n_channels, layer_idx)
+)
+vgg11_cifar10_gpool_lay2 = vgg11_cifar10_gpool.copy()
+vgg11_cifar10_gpool_lay2.update(
+    layer_idx=2
 )
 # vgg11_cifar10_gpool_exps = exps_channels_and_layers(
     # vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])
@@ -249,17 +254,14 @@ grid_2d_conv = dict(
     # center_response = True, # Whether or not to mean center each representation
     center_response = False,  # response 
 )
-alphas = torch.linspace(0.8, 3.0, 10)
+alphas = torch.linspace(0.8, 3.0, 15)
 n_channels = alphas_to_channels(
     alphas, grid_2d_conv['n_inputs'],
     int(grid_2d_conv['fit_intercept']))
-grid_2d_conv_exps = []
-for layer in [1, 2]:
-    for n_channel in n_channels:
-        temp = grid_2d_conv.copy()
-        temp['layer_idx'] = layer
-        temp['n_channels'] = n_channel
-        grid_2d_conv_exps.append(temp)
+param_sets.update(
+grid_2d_conv_exps=exps_channels_and_layers(grid_2d_conv_exps, n_channels,
+                                           layer_idx)
+)
 
 
 # AlexNet on imagenet
