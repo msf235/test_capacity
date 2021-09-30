@@ -280,17 +280,14 @@ grid_2d_conv = dict(
     # center_response = True, # Whether or not to mean center each representation
     center_response = False,  # response 
 )
-alphas = torch.linspace(0.8, 3.0, 10)
+alphas = torch.linspace(0.8, 3.0, 15)
 n_channels = alphas_to_channels(
     alphas, grid_2d_conv['n_inputs'],
     int(grid_2d_conv['fit_intercept']))
-grid_2d_conv_exps = []
-for layer in [1, 2]:
-    for n_channel in n_channels:
-        temp = grid_2d_conv.copy()
-        temp['layer_idx'] = layer
-        temp['n_channels'] = n_channel
-        grid_2d_conv_exps.append(temp)
+param_sets.update(
+grid_2d_conv_exps=exps_channels_and_layers(grid_2d_conv_exps, n_channels,
+                                           layer_idx)
+)
 
 
 # AlexNet on imagenet
