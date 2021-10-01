@@ -36,18 +36,18 @@ import cnn_capacity_utils as utils
 
 output_dir = 'output'
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 15
 # n_cores = 20
-n_cores = 10
+# n_cores = 10
 # n_cores = 20
-# n_cores = 7
+n_cores = 8
 # n_cores = 5
-# n_cores = 1 # setting to 1 for debugging.
+# n_cores = 3 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
 
@@ -66,12 +66,13 @@ seeds = [3, 4, 5]
 # param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps']
 # param_set_names = ['vgg11_cifar10_circular_exps']
-param_set_names = ['vgg11_cifar10_gpool_exps']
+# param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
 # param_set_names = ['random_2d_conv_gpool_exps']
 # param_set_names = ['random_2d_conv_efficient_exps']
 # param_set_names = ['vgg11_cifar10_exps']
+param_set_names = ['grid_2d_conv_exps']
 print('Running {}'.format('  '.join(param_set_names)))
 
 param_set = []
@@ -259,13 +260,15 @@ def get_capacity(
                 feats = feats[:, :n_channels]
                 return feats
     elif net_style == 'grid':
-        convlayer = torch.nn.Conv2d(3, n_channels, 4, bias=False)
+        convlayer = torch.nn.Conv2d(img_channels, n_channels, (img_size_x, img_size_y),
+                                    padding='same', padding_mode='circular',
+                                    bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
         # torch.nn.init.normal_(convlayer.weight)
         net = torch.nn.Sequential(
             convlayer,
             torch.nn.ReLU(),
-            models.MultiplePeriodicAggregate2D(((14, 14), (8, 8))),
+            models.MultiplePeriodicAggregate2D(((10, 10), (8, 8))),
         )
         net.eval()
         def feature_fn(input):
@@ -314,6 +317,8 @@ def get_capacity(
             return inputs
     else:
         raise AttributeError('net_style option not recognized')
+
+
     if net_style == 'randpoints':
         inp_channels = n_channels
     else:
@@ -394,7 +399,12 @@ def get_capacity(
 
 
 
+    # test_input, test_label = datasetfull[:2]
     test_input, test_label = next(iter(dataloader))[:2]
+    dl = iter(dataloaderfull)
+    av1 = next(dl)
+    av2 = next(dl)
+    test_input = torch.stack((av1[0], av2[0]), dim=0)
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
     h_test = feature_fn(test_input)
     if h_test.shape[1] < n_channels:
@@ -402,8 +412,12 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
-    P = utils.compute_pi_mean_reduced_2D(h_test.shape[-2], h_test.shape[-1],
-                                   shift_x, shift_y) 
+
+    if net_style == 'grid':
+        P = utils.compute_pi_mean_reduced_grid_2D((10, 8))
+    else:
+        P = utils.compute_pi_mean_reduced_2D(h_test.shape[-2], h_test.shape[-1],
+                                       shift_x, shift_y) 
     Pt = P.T.copy()
     # P = np.ones((1, N)) / N
     # Pt = np.ones((N, 1)) / N
@@ -470,6 +484,7 @@ def get_capacity(
         if batch_size == len(dataset):
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
+            hfull = feature_fn(inputsfull)
             h = feature_fn(inputs)
             if perceptron_style == 'efficient' or pool_over_group:
                 if perceptron_style == 'efficient':
@@ -497,7 +512,10 @@ def get_capacity(
             perceptron.fit(X, Y)
             if perceptron_style == 'efficient':
                 wtemp = perceptron.coef_.copy()
-                wtemp = wtemp.T @ P
+                # wtemp = wtemp.reshape(P.shape[0], -1)
+                wtemp = wtemp.reshape(-1, P.shape[0])
+                wtemp = wtemp @ P
+                # wtemp = Pt @ wtemp
                 wtemp = wtemp.reshape(-1)
                 curr_avg_acc = score(wtemp, Xfull, Yfull)
             else:
