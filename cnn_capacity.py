@@ -61,14 +61,14 @@ seeds = [3, 4, 5]
 
 # param_set_names = ['randpoint_exps']
 # param_set_names = ['randpoint_efficient_exps']
-param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
+# param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps']
 # param_set_names = ['vgg11_cifar10_circular_exps']
 # param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
 # param_set_names = ['random_2d_conv_gpool_exps']
 # param_set_names = ['random_2d_conv_efficient_exps']
-# param_set_names = ['vgg11_cifar10_exps']
+param_set_names = ['vgg11_cifar10_exps']
 print('Running {}'.format('  '.join(param_set_names)))
 
 param_set = []

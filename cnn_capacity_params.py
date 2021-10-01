@@ -259,7 +259,7 @@ n_channels = alphas_to_channels(
     alphas, grid_2d_conv['n_inputs'],
     int(grid_2d_conv['fit_intercept']))
 param_sets.update(
-grid_2d_conv_exps=exps_channels_and_layers(grid_2d_conv_exps, n_channels,
+grid_2d_conv_exps=exps_channels_and_layers(grid_2d_conv, n_channels,
                                            layer_idx)
 )
 
