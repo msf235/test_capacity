@@ -150,7 +150,7 @@ vgg11_cifar10 = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
     # n_dichotomies = 20, # Number of random dichotomies to test
     # n_dichotomies = 2, # Number of random dichotomies to test
-    n_inputs = 12, # Number of input samples to test
+    n_inputs = 20, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
     batch_size = None, # Batch size if training with SGD.
     img_size_x = 32, # Size of image x dimension.
@@ -210,10 +210,36 @@ param_sets.update(
 vgg11_cifar10_gpool_exps = exps_channels_and_layers(
     vgg11_cifar10_gpool, n_channels, layer_idx)
 )
+
 vgg11_cifar10_gpool_lay2 = vgg11_cifar10_gpool.copy()
 vgg11_cifar10_gpool_lay2.update(
-    layer_idx=2
+    layer_idx=2,
+    n_inputs=20,
 )
+n_channels = alphas_to_channels(
+    alphas, vgg11_cifar10_gpool_lay2['n_inputs'],
+    int(vgg11_cifar10['fit_intercept']))
+vgg11_cifar10_gpool_lay2_exps = exps_channels_and_layers(
+    vgg11_cifar10_gpool_lay2, n_channels)
+
+vgg11_cifar10_gpool_lay3 = vgg11_cifar10_gpool.copy()
+vgg11_cifar10_gpool_lay3.update(
+    layer_idx=3,
+    n_inputs=20,
+)
+n_channels = alphas_to_channels(
+    alphas, vgg11_cifar10_gpool_lay3['n_inputs'],
+    int(vgg11_cifar10['fit_intercept']))
+vgg11_cifar10_gpool_lay3_exps = exps_channels_and_layers(
+    vgg11_cifar10_gpool_lay3, n_channels)
+
+vgg11_cifar10_gpool_lay6 = vgg11_cifar10_gpool.copy()
+vgg11_cifar10_gpool_lay6.update(
+    layer_idx=6,
+    n_inputs=20,
+)
+vgg11_cifar10_gpool_lay3_exps = exps_channels_and_layers(
+    vgg11_cifar10_gpool_lay3, n_channels)
 # vgg11_cifar10_gpool_exps = exps_channels_and_layers(
     # vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])
 
@@ -222,14 +248,15 @@ vgg11_cifar10_gpool_lay2.update(
 ## Grid cell net
 grid_2d_conv = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
-    n_inputs = 40, # Number of input samples to test
+    n_inputs = 16, # Number of input samples to test
+    # n_inputs = 3, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
+    batch_size=None,
     # max_epochs_no_imp = 100, # Not implemented. Training will stop after
                                # this number of epochs without improvement
     # improve_tol = 1e-3, # Not implemented. The tolerance for improvement.
-    batch_size = 256, # Batch size if training with SGD
-    img_size_x = 56, # Size of image x dimension.
-    img_size_y = 56, # Size of image y dimension.
+    img_size_x = 40, # Size of image x dimension.
+    img_size_y = 40, # Size of image y dimension.
     # img_size_x = 224, # Size of image x dimension.
     # img_size_y = 224, # Size of image y dimension.
     # net_style = 'effnet', # Efficientnet layers.
@@ -237,8 +264,10 @@ grid_2d_conv = dict(
     # net_style = 'rand_conv', # Random convolutional layer.
     # net_style = 'randpoints', # Random points. Used to make sure linear
                                 # classifier is working alright.
+    layer_idx=0,
     # dataset_name = 'imagenet', # Use imagenet inputs.
     dataset_name = 'gaussianrandom', # Use Gaussian random inputs.
+    perceptron_style = 'efficient',
     # shift_style = '1d', # Take input 1d shifts (shift in only x dimension).
     shift_style = '2d', # Use input shifts in both x and y dimensions
     shift_x = 1, # Number of pixels by which to shift in the x direction
@@ -248,19 +277,19 @@ grid_2d_conv = dict(
     pool='max', 
     pool_x = 2,
     pool_y = 2,
-    fit_intercept = True, # Whether or not to fit the intercept in the linear
+    # fit_intercept = True, # Whether or not to fit the intercept in the linear
                           # classifier
-    # fit_intercept = False,
+    fit_intercept = False,
     # center_response = True, # Whether or not to mean center each representation
     center_response = False,  # response 
 )
-alphas = torch.linspace(0.8, 3.0, 15)
+alphas = torch.linspace(.5, 3.0, 15)
 n_channels = alphas_to_channels(
     alphas, grid_2d_conv['n_inputs'],
     int(grid_2d_conv['fit_intercept']))
+n_channels = [int(x/2) for x in n_channels]
 param_sets.update(
-grid_2d_conv_exps=exps_channels_and_layers(grid_2d_conv, n_channels,
-                                           layer_idx)
+grid_2d_conv_exps=exps_channels_and_layers(grid_2d_conv, n_channels)
 )
 
 
