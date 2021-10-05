@@ -39,8 +39,6 @@ plt.rcParams.update({
     'xtick.labelsize': 'x-large',
     'ytick.labelsize': 'x-large',
     "text.usetex": True,
-    # "font.family": "serif",
-    # "font.serif": ["Palatino"],
 })
 
 output_dir = 'output'
@@ -54,11 +52,14 @@ rerun = False
 # n_cores = 20
 # n_cores = 10
 # n_cores = 20
-n_cores = 7
-# n_cores = 5
+# n_cores = 7
+n_cores = 5
+# n_cores = 15
+# n_cores = 8
 # n_cores = 3 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
+# seeds = [3, 4]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
@@ -73,15 +74,15 @@ seeds = [3, 4, 5]
 # param_set_names = ['randpoint_exps']
 # param_set_names = ['randpoint_efficient_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
+# param_set_names = ['random_2d_conv_efficient_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps']
 # param_set_names = ['vgg11_cifar10_circular_exps']
 # param_set_names = ['vgg11_cifar10_gpool_exps']
-# param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
+# param_set_names = ['random_2d_conv_exps']
 # param_set_names = ['random_2d_conv_gpool_exps']
-# param_set_names = ['random_2d_conv_efficient_exps']
-# param_set_names = ['vgg11_cifar10_exps']
-param_set_names = ['grid_2d_conv_exps']
+param_set_names = ['vgg11_cifar10_exps']
+# param_set_names = ['grid_2d_conv_exps']
 print('Running {}'.format('  '.join(param_set_names)))
 
 param_set = []
@@ -741,13 +742,12 @@ if __name__ == '__main__':
            # color='red', label='theory maxpool')
     # ax.legend()
     P = param_set[0]['n_inputs']
-    # ax.set_xlabel('\alpha = ' + f'{P}' + '/(channels)')
     if param_set[0]['net_style'] == 'grid':
-        # ax.set_xlabel(r'$\alpha = $' + f'{P}' + r'/(2(\# channels))')
-        ax.set_xlabel(r'$\alpha = P/N_0$')
+       # ax.set_xlabel(r'$\alpha = $' + 'P' + r'/(2(\# channels))')
+       ax.set_xlabel(r'$\alpha = P/N_0$')
     else:
-        # ax.set_xlabel(r'$\alpha = $' + f'{P}' + r'/(\# channels)')
-        ax.set_xlabel(r'$\alpha = P/N_0$')
+       # ax.set_xlabel(r'$\alpha = $' + 'P' + r'/(\# channels)')
+       ax.set_xlabel(r'$\alpha = P/N_0$')
     ax.set_ylim([-.01, 1.01])
     figname = '__'.join(param_set_names)
     fig.savefig(f'figs/{figname}.pdf', bbox_inches='tight')

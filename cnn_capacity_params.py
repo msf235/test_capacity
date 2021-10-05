@@ -150,6 +150,7 @@ vgg11_cifar10 = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
     # n_dichotomies = 20, # Number of random dichotomies to test
     # n_dichotomies = 2, # Number of random dichotomies to test
+    # n_inputs = 12, # Number of input samples to test
     n_inputs = 20, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
     batch_size = None, # Batch size if training with SGD.
