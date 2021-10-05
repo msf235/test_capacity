@@ -34,6 +34,15 @@ import cnn_capacity_params as cp
 import datasets
 import cnn_capacity_utils as utils
 
+plt.rcParams.update({
+    'axes.labelsize': 'xx-large',
+    'xtick.labelsize': 'x-large',
+    'ytick.labelsize': 'x-large',
+    'text.usetex': True,
+    # 'font.family': 'serif',
+    # 'font.serif': ['Palatino'],
+})
+
 output_dir = 'output'
 fig_dir = 'figs'
 rerun = True # If True, rerun the simulation even if a matching simulation is
@@ -44,12 +53,13 @@ rerun = False
 # n_cores = 15
 # n_cores = 20
 # n_cores = 10
-# n_cores = 20
-n_cores = 8
-# n_cores = 5
+# n_cores = 15
+# n_cores = 8
+n_cores = 6
 # n_cores = 3 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
+# seeds = [3, 4]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
@@ -64,15 +74,15 @@ seeds = [3, 4, 5]
 # param_set_names = ['randpoint_exps']
 # param_set_names = ['randpoint_efficient_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
+# param_set_names = ['random_2d_conv_efficient_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps']
 # param_set_names = ['vgg11_cifar10_circular_exps']
 # param_set_names = ['vgg11_cifar10_gpool_exps']
-# param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
+# param_set_names = ['random_2d_conv_exps']
 # param_set_names = ['random_2d_conv_gpool_exps']
-# param_set_names = ['random_2d_conv_efficient_exps']
-# param_set_names = ['vgg11_cifar10_exps']
-param_set_names = ['grid_2d_conv_exps']
+param_set_names = ['vgg11_cifar10_exps']
+# param_set_names = ['grid_2d_conv_exps']
 print('Running {}'.format('  '.join(param_set_names)))
 
 param_set = []
@@ -401,10 +411,7 @@ def get_capacity(
 
     # test_input, test_label = datasetfull[:2]
     test_input, test_label = next(iter(dataloader))[:2]
-    dl = iter(dataloaderfull)
-    av1 = next(dl)
-    av2 = next(dl)
-    test_input = torch.stack((av1[0], av2[0]), dim=0)
+    # test_input = torch.stack((av1[0], av2[0]), dim=0)
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
     h_test = feature_fn(test_input)
     if h_test.shape[1] < n_channels:
@@ -484,7 +491,6 @@ def get_capacity(
         if batch_size == len(dataset):
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
-            hfull = feature_fn(inputsfull)
             h = feature_fn(inputs)
             if perceptron_style == 'efficient' or pool_over_group:
                 if perceptron_style == 'efficient':
@@ -702,13 +708,13 @@ if __name__ == '__main__':
         style = None
     style = 'pool_over_group'
     os.makedirs('figs', exist_ok=True)
-    results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
     fig, ax = plt.subplots(figsize=(5,4))
-    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+    g = sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  hue='layer', style=style)
+    g.legend_.remove()
     # sns.boxplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  # hue=style)
     # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
@@ -727,8 +733,16 @@ if __name__ == '__main__':
            color='blue', label='theory')
     # ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()), linestyle='dotted',
            # color='red', label='theory maxpool')
-    ax.legend()
+    # ax.legend()
+    P = param_set[0]['n_inputs']
+    if param_set[0]['net_style'] == 'grid':
+       # ax.set_xlabel(r'$\alpha = $' + 'P' + r'/(2(\# channels))')
+       ax.set_xlabel(r'$\alpha = P/N_0$')
+    else:
+       # ax.set_xlabel(r'$\alpha = $' + 'P' + r'/(\# channels)')
+       ax.set_xlabel(r'$\alpha = P/N_0$')
     ax.set_ylim([-.01, 1.01])
     figname = '__'.join(param_set_names)
     fig.savefig(f'figs/{figname}.pdf', bbox_inches='tight')
+    results_table.to_pickle(f'figs/{figname}.pkl')
 
