@@ -17,35 +17,19 @@ import itertools
 import torchvision.transforms as transforms
 from sklearn import svm, linear_model
 from sklearn.exceptions import ConvergenceWarning
-import pandas as pd
-from matplotlib import pyplot as plt
-import seaborn as sns
-sns.set_palette('colorblind')
 from joblib import Parallel, delayed
 import pickle as pkl
 import numpy as np
 import warnings
 from typing import *
 
-import timm
 import models
 import model_output_manager as mom
 import cnn_capacity_params as cp
 import datasets
 import cnn_capacity_utils as utils
 
-plt.rcParams.update({
-    'axes.labelsize': 'xx-large',
-    'xtick.labelsize': 'x-large',
-    'ytick.labelsize': 'x-large',
-    "text.usetex": True,
-})
-
 output_dir = 'output'
-
-# ImageNet directory
-image_net_dir = '/home/matthew/datasets/imagenet/ILSVRC/Data/CLS-LOC/val'
-# image_net_dir = '/n/pehlevan_lab/Lab/matthew/imagenet/ILSVRC/Data/CLS-LOC/val'
 
 # % Main function for capacity. This function is memoized based on its
 # parameters.
@@ -78,11 +62,6 @@ def get_capacity(
     max_epochs : int
 		Maximum number of epochs. This is also the max number of iterations
         when using LinearSVC.
-    # max_epochs_no_imp : int
-        Not implemented. Training will stop after this number of epochs without
-        improvement
-    # improve_tol : 
-		Not implemented. The tolerance for improvement.
     batch_size : Optional[int]
 		Batch size. If None, this is set to the size of the dataset.
     img_size_x : int
@@ -90,12 +69,12 @@ def get_capacity(
     img_size_y : int
 		Size of image y dimension.
     net_style : str 
-        Style of network. Valid options are 'vgg11', 'alexnet', 'effnet', 'grid', 
-        'rand_conv', and 'randpoints'.
+        Style of network. Valid options are 'vgg11', 'grid', 'rand_conv', and
+        'randpoints'.
     layer_idx : int
         Index for layer to get from conv net.
     dataset_name : str 
-		The dataset. Options are 'imagenet', 'cifar10', and 'gaussianrandom'
+		The dataset. Options are 'cifar10', and 'gaussianrandom'
     shift_style : str 
         Shift style. Options are 1d (shift in only x dimension) and 2d (use
         input shifts in both x and y dimensions).
@@ -108,24 +87,23 @@ def get_capacity(
         before fitting the linear classifier.
     perceptron_style : str {'efficient', 'standard'}
         How to train the output weights. If 'efficient' then use the trick
-        of finding a separating hyperplane for the identity group operations
+        of finding a separating hyperplane for the centroids
         and then applying the average group projector to this hyperplane.
     pool : Optional[str] 
 		Pooling to use for representation. Options are None, 'max', and 'mean'.
-        Only currently implemented for net_style='rand_conv'.
+        Only currently implemented for net_style in ('rand_conv', 'grid').
     pool_x : Optional[int] 
 		Size in pixels of pool in x direction. Set to None if pool is None.
     pool_y : Optional[int] 
 		Size in pixels of pool in y direction. Set to None if pool is None.
     fit_intercept : bool 
-		Whether or not to fit the intercept in the linear classifier.
+		NOT USED. Whether or not to fit the intercept in the linear classifier.
         This currently throws an error when set to True since I haven't
         got the intercept working with perceptron_style = 'efficient' yet.
     center_response : bool 
         Whether or not to mean center each representation response.
     seed : int
-		Random number generator seed. Currently haven't guaranteed perfect
-        reproducibility.
+		Random number generator seed. 
     n_cores : int
         Number of processes to spawn for parallel processing.
     rerun : bool
@@ -162,22 +140,6 @@ def get_capacity(
         raise AttributeError("fit_intercept=True not currently implemented.")
     torch.manual_seed(seed)
 
-    ## Someday I may choose to use feature hooks.
-    ## For now I avoid it so I have the power to only do inference
-    ## in the network only up to the needed layer. However, this 
-    ## requires that the network model be modified to have a get_features method.
-    # def register_feature_hooks(net, k, hook_fn):
-        # cnt = 0
-        # for name, layer in net._modules.items():
-            # #If it is a sequential, don't register a hook on it
-            # # but recursively register hook on all it's module children
-            # if isinstance(layer, nn.Sequential):
-                # register_feature_hooks(layer, k)
-            # else: # it's a non sequential. Register a hook
-                # layer.register_forward_hook(hook_fn)
-                # cnt = cnt + 1
-                # if cnt >= k:
-                    # break
     pool_efficient_shift = 0
 
     if net_style[:5] == 'vgg11':
@@ -198,32 +160,14 @@ def get_capacity(
                     raise AttributeError("""This parameter combination not
                                          supported.""")
                 pool_efficient_shift = 1
-
-    elif net_style == 'alexnet':
-        net = models.alexnet(pretrained=True)
-        net.eval()
-        def feature_fn(inputs):
-            with torch.no_grad():
-                feats = net.get_features(inputs)
-                feats = feats['conv_layers'][layer_idx][:, :n_channels]
-                return feats
-    elif net_style == 'effnet':
-        net = timm.models.factory.create_model('efficientnet_b2', pretrained=True)
-        net.eval()
-        def feature_fn(input):
-            with torch.no_grad():
-                feats = net.get_features(input)[layer_idx]
-                feats = feats[:, :n_channels]
-                return feats
     elif net_style == 'grid':
         convlayer = torch.nn.Conv2d(img_channels, n_channels, (img_size_x, img_size_y),
                                     padding='same', padding_mode='circular',
                                     bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
-        # torch.nn.init.normal_(convlayer.weight)
         net = torch.nn.Sequential(
             convlayer,
-            # torch.nn.ReLU(),
+            torch.nn.ReLU(),
             models.MultiplePeriodicAggregate2D(((10, 10), (8, 8))),
         )
         net.eval()
@@ -239,8 +183,6 @@ def get_capacity(
                             padding='same', padding_mode='circular',
                             bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
-        # torch.nn.init.normal_(convlayer.weight)
-        # torch.nn.init.orthogonal_(convlayer.weight)
         layers = [convlayer, torch.nn.ReLU()]
         if pool is not None:
             if pool == 'max':
@@ -279,27 +221,7 @@ def get_capacity(
         inp_channels = n_channels
     else:
         inp_channels = img_channels
-    if dataset_name.lower() == 'imagenet':
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                                 std=[0.229, 0.224, 0.225])
-        # transform_train = transforms.Compose([
-            # transforms.RandomResizedCrop(224),
-            # transforms.RandomHorizontalFlip(),
-            # transforms.ToTensor(),
-            # normalize,
-        # ])
-        transform_test = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop((img_size_x, img_size_y)), #224 is typical
-            transforms.ToTensor(),
-            normalize,
-        ])
-        
-        img_dataset = torchvision.datasets.ImageFolder(root=image_net_dir,
-                                                        transform=transform_test)
-        random_samples = torch.randperm(len(img_dataset))[:n_inputs]
-        core_dataset = datasets.SubsampledData(img_dataset, random_samples)
-    elif dataset_name.lower() == 'cifar10':
+    if dataset_name.lower() == 'cifar10':
         transform = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize(mean=(0.4914, 0.4822, 0.4465),
@@ -362,8 +284,6 @@ def get_capacity(
     if h_test.shape[1] < n_channels:
         raise AttributeError("""Error: network response produces fewer channels
                              than n_channels.""")
-    N = torch.prod(torch.tensor(h_test.shape[2:])).item()
-
 
     if net_style == 'grid':
         P = utils.compute_pi_mean_reduced_grid_2D((10, 8))
@@ -372,43 +292,9 @@ def get_capacity(
                                        shift_x, shift_y) 
     Pt = P.T.copy()
     
-    # # %%  Test data sampling
-    # ds = dataloader.dataset
-    # def no(k): Get network output
-        # return net(ds[k][0].unsqueeze(dim=0)).squeeze()
-    
-    # cnt = 0
-    # for input, label, core_idx in dataloader:
-        # cnt += 1
-        # print(input.shape)
-        # print(label)
-        # print(core_idx)
-        # print(cnt)
-
-    # # %% 
-
-    # loss_fn = HingeLoss()
-    loss_fn = hinge_loss
-
-    # def score(w, X, Y):
-        # Ytilde = X @ w
-        # return np.mean(np.sign(Ytilde) == np.sign(Y))
-    
     def score(w, X, Y):
         Ytilde = X @ w
         return np.mean(np.sign(Ytilde) == np.sign(Y-.5))
-        # return np.mean(np.sign(Ytilde-.5) == np.sign(Y-.5))
-
-    def sigmoid(x):
-        return 1/(1+np.exp(-x))
-    def log_regscore(w, X, Y):
-        Ytilde = X @ w
-        ps = sigmoid(Ytilde)
-        return np.mean(np.sign(ps-.5) == np.sign(Y-.5))
-
-    def class_acc(outs, targets):
-        correct = 1.0*(outs * random_labels > 0)
-        return torch.mean(correct)
 
     def dich_loop(process_id=None):
         """Generates random labels and returns the accuracy of a classifier
@@ -416,21 +302,14 @@ def get_capacity(
         np.random.seed(seed)
         rndseed = np.random.randint(10000)
         torch.manual_seed(process_id + rndseed)  # Be very careful with this
-        # np.random.seed(process_id+rndseed) 
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         while len(set(class_random_labels.tolist())) < 2:
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
-        # perceptron = linear_model.SGDClassifier(
-            # tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
-            # max_iter=max_epochs)
-        perceptron = linear_model.LogisticRegression(
-            tol=1e-18, C=1e8, fit_intercept=fit_intercept,
-            max_iter=max_epochs, random_state=seed + rndseed)
-        # perceptron = svm.LinearSVC(
-            # tol=1e-18, C=1e8, fit_intercept=fit_intercept,
-            # max_iter=max_epochs, random_state=seed)
-        if batch_size == len(dataset):
+        if batch_size == len(dataset): # Train classifier on entire dataset
+            perceptron = linear_model.LogisticRegression(
+                tol=1e-18, C=1e8, fit_intercept=fit_intercept,
+                max_iter=max_epochs, random_state=seed + rndseed)
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
             h = feature_fn(inputs)
@@ -460,38 +339,16 @@ def get_capacity(
             perceptron.fit(X, Y)
             if perceptron_style == 'efficient':
                 wtemp = perceptron.coef_.copy()
-                # wtemp = wtemp.reshape(P.shape[0], -1)
                 wtemp = wtemp.reshape(-1, P.shape[0])
                 wtemp = wtemp @ P
-                # wtemp = Pt @ wtemp
                 wtemp = wtemp.reshape(-1)
                 curr_avg_acc = score(wtemp, Xfull, Yfull)
             else:
                 curr_avg_acc = perceptron.score(X, Y)
-
-            # curr_best_loss = 1000
-            # not_improved_cntr = 0
-            # for epoch in range(max_epochs):
-                # perceptron.partial_fit(X, Y, classes=(-1, 1))
-                # if perceptron_style == 'efficient':
-                    # wtemp = perceptron.coef_.copy()
-                    # wtemp = wtemp.T @ P
-                    # wtemp = wtemp.reshape(-1)
-                    # curr_avg_acc = score(wtemp, Xfull, Yfull)
-                # else:
-                    # curr_avg_acc = perceptron.score(X, Y).item()
-                # if curr_avg_acc == 1.0:
-                    # break
-                # if max_epochs_no_imp is not None:
-                    # loss = loss_fn(X, Y)
-                    # if curr_best_loss >= loss - improve_tol:
-                        # not_improved_cntr += 1
-                    # else:
-                        # not_improved_cntr = 0
-                    # curr_best_loss = min(curr_best_loss, loss)
-                    # if not_improved_cntr >= max_epochs_no_imp:
-                        # break
-        else:
+        else: # Use minibatches -- not well tested
+            perceptron = linear_model.SGDClassifier(
+                tol=1e-18, alpha=1e-16, fit_intercept=fit_intercept,
+                max_iter=max_epochs)
             for epoch in range(max_epochs):
                 losses_epoch = []
                 class_acc_epoch = []
@@ -501,7 +358,6 @@ def get_capacity(
                     if pool_over_group:
                         hrs = h.reshape(*h.shape[:2], -1)
                         centroids = hrs @ Pt
-                        # centroids = centroids.unique(dim=0)
                         X = centroids.reshape(centroids.shape[0], -1).numpy()
                         Y = np.array(class_random_labels)
                     else:
@@ -512,71 +368,11 @@ def get_capacity(
                     class_acc_epoch.append(perceptron.score(X, Y).item())
                     curr_avg_acc = sum(class_acc_epoch)/len(class_acc_epoch)
                 if perceptron_style == 'efficient':
-                    for k1, data in enumerate(dataloaderfull):
-                        core_idx_batch = data[2]
-                        hfull = feature_fn(data[0])
-                        Xfull = hfull.reshape(hfull.shape[0], -1).numpy()
-                        Yfull = class_random_labels[core_idx_batch].numpy()
-                        wtemp = perceptron.coef_.copy()
-                        wtemp = wtemp.T @ P
-                        wtemp = wtemp.reshape(-1)
-                        curr_avg_acc = score(wtemp, Xfull, Yfull)
-
-                    # perc_compl = round(100*(k2/len(dataloader)))
-                    # if process_id is None:
-                        # print(f'Epoch {epoch} progress {perc_compl}%', end='\r')
-                    # else:
-                        # print(f'Process {process_id}: Epoch {epoch} progress {perc_compl}%', end='\r')
-                    # print(f'Process {process_id}: Epoch average acc {curr_avg_acc}')
-                # if process_id is None:
-                    # print(f'Epoch {epoch}/{max_epochs}', end='\r')
-                # else:
-                    # print(f'Process {process_id}: Epoch {epoch}/{max_epochs}', end='\r')
-                # if curr_avg_loss >= curr_best_loss - improve_tol:
-                    # num_no_imp += 1
-                # else:
-                    # num_no_imp = 0
-                # curr_best_loss = min(curr_avg_loss, curr_best_loss)
-                # if num_no_imp > max_epochs_no_imp:
-                    # break
+                    raise AttributeError("""Efficient perceptron style and
+                                         minibatching not supported together.""")
                 if curr_avg_acc == 1.0:
                     break
         return curr_avg_acc
-
-            ## Debug code for computing centroids directly
-            # core_idx = torch.tensor(core_idx)
-            # centroids_inp = torch.zeros(n_inputs, *input.shape[1:])
-            # for k2 in range(n_inputs):
-                # centroids_inp[k2] = torch.mean(input[core_idx==k2], dim=0)
-            # centroids = torch.zeros(n_inputs, *h.shape[1:])
-            # Yc = torch.zeros(n_inputs)
-            # for k2 in range(n_inputs):
-                # centroids[k2] = torch.mean(h[core_idx==k2], dim=0)
-                # Yc[k2] = Y[core_idx==k2][0]
-            # centroids_inp_f = centroids_inp.reshape(*centroids_inp.shape[:2], -1)
-            # C_inp = centroids_inp_f[:,0].T @ centroids_inp_f[:,0]
-            # ew_inp, ev_inp = np.linalg.eigh(C_inp)
-            # centroids_f = centroids.reshape(*centroids.shape[:2], -1)
-            # C = centroids_f[:,0].T @ centroids_f[:,0]
-            # ew, ev = np.linalg.eigh(C)
-            # centroids_f_rs = centroids_f.reshape(centroids_f.shape[0], -1)
-            # C = centroids_f_rs.T @ centroids_f_rs
-            # ew, ev = np.linalg.eigh(C)
-            # fitter = svm.LinearSVC(tol=1e-12, max_iter=40000, C=30.,
-                                  # fit_intercept=fit_intercept)
-            # fitter.fit(centroids_f_rs, Yc)
-            # acc = fitter.score(centroids_f_rs, Yc)
-
-            # fitter = svm.LinearSVC(tol=1e-18, C=1e16, fit_intercept=fit_intercept,
-                                   # max_iter=max_epochs)
-            ## Debug code for checking rank of data 
-            # Xmc = X - np.mean(X, axis=0)
-            # C = X.T @ Xmc
-            # ew, ev = np.linalg.eigh(C)
-            # fitter.fit(X, Y)
-            # print(Y)
-            # ax.scatter(X[:,0], X[:,1], c=Y)
-            # plt.show()
 
     if n_cores > 1:
         print(f"Beginning parallelized loop over {n_dichotomies} dichotomies.")
@@ -595,6 +391,7 @@ def get_capacity(
     else:
         alpha = n_inputs / n_channels
     print(f'alpha: {round(alpha,5)}, capacity: {round(capacity,5)}')
+    
     ## Now save results of the run to a pickled dictionary
     run_id = mom.get_run_entry(params, output_dir)
     run_dir = output_dir + f'/run_{run_id}/'

@@ -1,5 +1,7 @@
 
-"""Script for running cnn capacity experiments.
+"""Script for plotting cnn capacity experiments.
+
+This script calls cnn_capacity.py.
 
 Sets of parameters used for running simulations can be found in the file 
 cnn_capacity_params.py.
@@ -8,31 +10,15 @@ Datasets and the relevant group-shifted versions of datasets can be found
 in datasets.py."""
 
 import os
-import sys
-import inspect
 import math
-import torch
-import torchvision
 import itertools
-import torchvision.transforms as transforms
-from sklearn import svm, linear_model
-from sklearn.exceptions import ConvergenceWarning
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
 sns.set_palette('colorblind')
-from joblib import Parallel, delayed
 import pickle as pkl
-import numpy as np
-import warnings
-from typing import *
 
-import timm
-import models
-import model_output_manager as mom
 import cnn_capacity_params as cp
-import datasets
-import cnn_capacity_utils as utils
 
 plt.rcParams.update({
     'axes.labelsize': 'xx-large',
@@ -42,13 +28,13 @@ plt.rcParams.update({
 })
 
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
-rerun = False
+# rerun = False
 
 # Number of processor cores to use for multiprocessing. Recommend setting to 1
 # for debugging
-n_cores = 5
+n_cores = 2
 seeds = [3, 4, 5]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
@@ -69,9 +55,9 @@ seeds = [3, 4, 5]
 # param_set_names = ['vgg11_cifar10_circular_exps']
 # param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
-# param_set_names = ['random_2d_conv_exps']
+param_set_names = ['random_2d_conv_exps']
 # param_set_names = ['random_2d_conv_gpool_exps']
-param_set_names = ['vgg11_cifar10_exps']
+# param_set_names = ['vgg11_cifar10_exps']
 # param_set_names = ['grid_2d_conv_exps']
 print('Running {}'.format('  '.join(param_set_names)))
 
