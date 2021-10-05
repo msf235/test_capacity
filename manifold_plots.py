@@ -7,6 +7,8 @@ torch.manual_seed(4)
 X = torch.randn(2, 2)
 Y = torch.zeros(2)
 Y[0] = 1
+s1 = 320
+s2 = 26000
 
 s1 = 160
 s2 = 120

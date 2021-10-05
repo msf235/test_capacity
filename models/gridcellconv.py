@@ -38,15 +38,15 @@ class PeriodicAggregate2D(nn.Module):
 
 
     def forward(self, input):
-        output_dim_1 = int(input.shape[-1] / self.period[0])
-        output_dim_2 = int(input.shape[-2] / self.period[1])
+        output_dim_2 = self.period[1]
+        output_dim_1 = self.period[0]
         output = torch.zeros(*input.shape[:-2], output_dim_1, output_dim_2)
-        for k1 in range(output_dim_1):
-            for k2 in range(output_dim_2):
-                input_agg_1 = self.agg_func(input[...,:,k1::self.period[0]],
-                                           dim=-1)
-                input_agg_12 = self.agg_func(input_agg_1[...,k2::self.period[1]],
-                                            dim=-1)
+        for k2 in range(output_dim_2):
+            for k1 in range(output_dim_1):
+                t1 = input[...,:,k2::self.period[1]]
+                input_agg_1 = self.agg_func(t1, dim=-1)
+                t2 = input_agg_1[...,k1::self.period[0]]
+                input_agg_12 = self.agg_func(t2, dim=-1)
                 output[..., k1, k2] = input_agg_12
         return output
 

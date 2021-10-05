@@ -34,20 +34,32 @@ import cnn_capacity_params as cp
 import datasets
 import cnn_capacity_utils as utils
 
+plt.rcParams.update({
+    'axes.labelsize': 'xx-large',
+    'xtick.labelsize': 'x-large',
+    'ytick.labelsize': 'x-large',
+    "text.usetex": True,
+})
+
 output_dir = 'output'
 fig_dir = 'figs'
-# rerun = True # If True, rerun the simulation even if a matching simulation is
+rerun = True # If True, rerun the simulation even if a matching simulation is
                # found saved to disk
 rerun = False
 # n_cores = 40  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 20  # Number of processor cores to use for multiprocessing. Recommend
 # n_cores = 15
+# n_cores = 20
 # n_cores = 10
+# n_cores = 20
 # n_cores = 7
 n_cores = 5
-# n_cores = 1 # setting to 1 for debugging.
+# n_cores = 15
+# n_cores = 8
+# n_cores = 3 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
 seeds = [3, 4, 5]
+# seeds = [3, 4]
 
 ## Collect parameter sets in a list of dictionaries so that simulations can be
 ## automatically saved and loaded based on the values in the dictionaries.
@@ -61,13 +73,17 @@ seeds = [3, 4, 5]
 
 # param_set_names = ['randpoint_exps']
 # param_set_names = ['randpoint_efficient_exps']
-param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
+# param_set_names = ['vgg11_cifar10_efficient_exps', 'vgg11_cifar10_gpool_exps']
+# param_set_names = ['random_2d_conv_efficient_exps']
 # param_set_names = ['vgg11_cifar10_efficient_exps']
+# param_set_names = ['vgg11_cifar10_circular_exps']
 # param_set_names = ['vgg11_cifar10_gpool_exps']
 # param_set_names = ['random_2d_conv_exps', 'random_2d_conv_gpool_exps']
+# param_set_names = ['random_2d_conv_exps']
 # param_set_names = ['random_2d_conv_gpool_exps']
-# param_set_names = ['random_2d_conv_efficient_exps']
-# param_set_names += ['vgg11_cifar10_exps']
+param_set_names = ['vgg11_cifar10_exps']
+# param_set_names = ['grid_2d_conv_exps']
+print('Running {}'.format('  '.join(param_set_names)))
 
 param_set = []
 for name in param_set_names:
@@ -254,20 +270,22 @@ def get_capacity(
                 feats = feats[:, :n_channels]
                 return feats
     elif net_style == 'grid':
-        convlayer = torch.nn.Conv2d(3, n_channels, 4, bias=False)
+        convlayer = torch.nn.Conv2d(img_channels, n_channels, (img_size_x, img_size_y),
+                                    padding='same', padding_mode='circular',
+                                    bias=False)
         torch.nn.init.xavier_normal_(convlayer.weight)
         # torch.nn.init.normal_(convlayer.weight)
         net = torch.nn.Sequential(
             convlayer,
-            torch.nn.ReLU(),
-            models.MultiplePeriodicAggregate2D(((14, 14), (8, 8))),
+            # torch.nn.ReLU(),
+            models.MultiplePeriodicAggregate2D(((10, 10), (8, 8))),
         )
         net.eval()
         def feature_fn(input):
             with torch.no_grad():
                 hlist = net(input)
             hlist = [h.reshape(*h.shape[:2], -1) for h in hlist]
-            h = torch.cat(hlist, dim=-1)
+            h = torch.relu(torch.cat(hlist, dim=-1))
             return h
     elif net_style == 'rand_conv':
         convlayer = torch.nn.Conv2d(img_channels, n_channels,
@@ -286,7 +304,7 @@ def get_capacity(
                 pool_layer = torch.nn.AvgPool2d((pool_x, pool_y),
                                                 (pool_x, pool_y)) 
             if pool is not None or pool_over_group:
-                if layer > 1:
+                if layer_idx > 1:
                     pool_efficient_shift = 1
             layers.append(pool_layer)
         layers = layers[:layer_idx+1]
@@ -309,6 +327,8 @@ def get_capacity(
             return inputs
     else:
         raise AttributeError('net_style option not recognized')
+
+
     if net_style == 'randpoints':
         inp_channels = n_channels
     else:
@@ -389,6 +409,7 @@ def get_capacity(
 
 
 
+    # test_input, test_label = datasetfull[:2]
     test_input, test_label = next(iter(dataloader))[:2]
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
     h_test = feature_fn(test_input)
@@ -397,8 +418,12 @@ def get_capacity(
                              than n_channels.""")
     N = torch.prod(torch.tensor(h_test.shape[2:])).item()
 
-    P = utils.compute_pi_mean_reduced_2D(h_test.shape[-2], h_test.shape[-1],
-                                   shift_x, shift_y) 
+
+    if net_style == 'grid':
+        P = utils.compute_pi_mean_reduced_grid_2D((10, 8))
+    else:
+        P = utils.compute_pi_mean_reduced_2D(h_test.shape[-2], h_test.shape[-1],
+                                       shift_x, shift_y) 
     Pt = P.T.copy()
     # P = np.ones((1, N)) / N
     # Pt = np.ones((N, 1)) / N
@@ -451,8 +476,6 @@ def get_capacity(
         # np.random.seed(process_id+rndseed) 
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
-        # if process_id == 0:
-        print(class_random_labels)
         while len(set(class_random_labels.tolist())) < 2:
             class_random_labels = 2*(torch.rand(len(core_dataset)) < .5) - 1
         # perceptron = linear_model.SGDClassifier(
@@ -494,14 +517,15 @@ def get_capacity(
             perceptron.fit(X, Y)
             if perceptron_style == 'efficient':
                 wtemp = perceptron.coef_.copy()
-                wtemp = wtemp.T @ P
+                # wtemp = wtemp.reshape(P.shape[0], -1)
+                wtemp = wtemp.reshape(-1, P.shape[0])
+                wtemp = wtemp @ P
+                # wtemp = Pt @ wtemp
                 wtemp = wtemp.reshape(-1)
                 curr_avg_acc = score(wtemp, Xfull, Yfull)
             else:
                 curr_avg_acc = perceptron.score(X, Y)
 
-            if process_id == 0:
-                print(perceptron.coef_)
             # curr_best_loss = 1000
             # not_improved_cntr = 0
             # for epoch in range(max_epochs):
@@ -651,15 +675,20 @@ if __name__ == '__main__':
 
     results_table = pd.DataFrame()
     for seed in seeds:
-        for params in param_set:
+        for i0, params in enumerate(param_set):
+            print(f"Starting param set {i0+1}/{len(param_set)} with seed {seed}")
             capacity = get_capacity(seed=seed, **params)
             layer = params['layer_idx']
             n_input = params['n_inputs']
             n_channel = params['n_channels']
             net_style = params['net_style']
+            if net_style == 'grid':
+                factor = 2
+            else:
+                factor = 1
             offset = int(params['fit_intercept'])
             pool_over_group = params['pool_over_group']
-            alpha = n_input / (n_channel + offset)
+            alpha = n_input / (factor*n_channel + offset)
             cover_capacity = cover_theorem(n_input, n_channel)
             pool_over_group = params['pool_over_group']
             d1 = {'seed': seed, 'alpha': alpha, 'n_inputs': n_input,
@@ -682,15 +711,15 @@ if __name__ == '__main__':
         style = None
     style = 'pool_over_group'
     os.makedirs('figs', exist_ok=True)
-    results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
     fig, ax = plt.subplots(figsize=(5,4))
-    # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 # hue='layer', style=style)
-    sns.boxplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
-                 hue=style)
+    g = sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 hue='layer', style=style)
+    g.legend_.remove()
+    # sns.boxplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+                 # hue=style)
     # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  # hue=style)
     nmin = results_table['n_channels_offset'].min()
@@ -699,16 +728,28 @@ if __name__ == '__main__':
     pmax = results_table['n_inputs'].max()
     alphamin = results_table['alpha'].min()
     alphamax = results_table['alpha'].max()
-    cover_cap = {p/n: cover_theorem(p, n) for n in range(nmin, nmax+1)
-                for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
+    if net_style == 'grid':
+        factor = 2
+    else:
+        factor = 1
+    cover_cap = {p/(factor*n): cover_theorem(p, factor*n) for n in range(nmin, nmax+1)
+                for p in range(pmin, pmax+1) if alphamin <= p/(factor*n) <= alphamax}
     cover_cap_maxpool = {p/n: cover_theorem(2*p, n) for n in range(nmin, nmax+1)
                 for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
     ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='dotted',
            color='blue', label='theory')
     # ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()), linestyle='dotted',
            # color='red', label='theory maxpool')
-    ax.legend()
+    # ax.legend()
+    P = param_set[0]['n_inputs']
+    if param_set[0]['net_style'] == 'grid':
+       # ax.set_xlabel(r'$\alpha = $' + 'P' + r'/(2(\# channels))')
+       ax.set_xlabel(r'$\alpha = P/N_0$')
+    else:
+       # ax.set_xlabel(r'$\alpha = $' + 'P' + r'/(\# channels)')
+       ax.set_xlabel(r'$\alpha = P/N_0$')
     ax.set_ylim([-.01, 1.01])
-    fig.savefig('figs/most_recent.pdf', bbox_inches='tight')
-    breakpoint()
+    figname = '__'.join(param_set_names)
+    fig.savefig(f'figs/{figname}.pdf', bbox_inches='tight')
+    results_table.to_pickle(f'figs/{figname}.pkl')
 
