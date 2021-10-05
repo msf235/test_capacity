@@ -1,4 +1,7 @@
 '''
+This code is taken from https://github.com/kuangliu/pytorch-cifar and modified
+by anonymous authors.
+
 Modified from https://raw.githubusercontent.com/pytorch/vision/v0.9.1/torchvision/models/vgg.py
 
 BSD 3-Clause License
