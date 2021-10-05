@@ -8,6 +8,9 @@ X = torch.randn(2, 2)
 Y = torch.zeros(2)
 Y[0] = 1
 
+s1 = 160
+s2 = 120
+
 def R(θ):
     θ = torch.tensor(θ)
     return torch.tensor([[torch.cos(θ), -torch.sin(θ)],
@@ -17,11 +20,11 @@ n = 4
 θs = torch.arange(0, 2*π, 2*π/n) 
 RX = torch.stack([X@R(θ).T for θ in θs])
 fig, ax = plt.subplots(figsize=(4,4))
-ax.scatter(*RX[0,0].T, c='orange', marker='*', s=80)
-ax.scatter(*RX[1:,0].T, c='orange')
-ax.scatter(*RX[0,1].T, c='g', marker='*', s=80)
-ax.scatter(*RX[1:,1].T, c='g')
-ax.scatter([0], [0], c='b', s=80)
+ax.scatter(*RX[0,0].T, c='orange', marker='*', s=s1)
+ax.scatter(*RX[1:,0].T, c='orange', s=s2)
+ax.scatter(*RX[0,1].T, c='g', marker='*', s=s1)
+ax.scatter(*RX[1:,1].T, c='g', s=s2)
+ax.scatter([0], [0], s=s1, facecolors='none', edgecolors='b')
 fig.show()
 fig.savefig('rot_mat_orbits.pdf')
 
@@ -40,10 +43,10 @@ def R(θ):
 RX = torch.stack([X@R(θ).T for θ in θs])
 fig = plt.figure()
 ax = plt.axes(projection='3d')
-ax.scatter(*RX[0,0].T, c='orange', marker='*', s=80)
-ax.scatter(*RX[1:,0].T, c='orange')
-ax.scatter(*RX[0,1].T, c='g', marker='*', s=80)
-ax.scatter(*RX[1:,1].T, c='g')
+ax.scatter(*RX[0,0].T, c='orange', marker='*', s=s1)
+ax.scatter(*RX[1:,0].T, c='orange', s=s2)
+ax.scatter(*RX[0,1].T, c='g', marker='*', s=s1)
+ax.scatter(*RX[1:,1].T, c='g', s=s2)
 ax.plot([0, 0], [0, 0], [-1.8, 2])
 ax.set_xlim([-1, 1])
 ax.set_ylim([-1, 1])
@@ -68,10 +71,10 @@ RX = torch.stack([Ck(X,k) for k in range(3)])
 
 fig = plt.figure()
 ax = plt.axes(projection='3d')
-ax.scatter(*RX[0,0].T, c='orange', marker='*', s=80)
-ax.scatter(*RX[1:,0].T, c='orange')
-ax.scatter(*RX[0,1].T, c='g', marker='*', s=80)
-ax.scatter(*RX[1:,1].T, c='g')
+ax.scatter(*RX[0,0].T, c='orange', marker='*', s=s1)
+ax.scatter(*RX[1:,0].T, c='orange', s=s2)
+ax.scatter(*RX[0,1].T, c='g', marker='*', s=s1)
+ax.scatter(*RX[1:,1].T, c='g', s=s2)
 ax.plot([-.3, .5], [-.3, .5], [-.3, .5])
 ax.set_xlim([-1, 1])
 ax.set_ylim([-1, 1])
