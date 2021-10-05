@@ -19,6 +19,7 @@ sns.set_palette('colorblind')
 import pickle as pkl
 
 import cnn_capacity_params as cp
+import cnn_capacity
 
 plt.rcParams.update({
     'axes.labelsize': 'xx-large',
@@ -80,7 +81,7 @@ if __name__ == '__main__':
     for seed in seeds:
         for i0, params in enumerate(param_set):
             print(f"Starting param set {i0+1}/{len(param_set)} with seed {seed}")
-            capacity = get_capacity(seed=seed, n_cores=n_cores, 
+            capacity = cnn_capacity.get_capacity(seed=seed, n_cores=n_cores, 
                                     rerun=rerun, **params)
             layer = params['layer_idx']
             n_input = params['n_inputs']
