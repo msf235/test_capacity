@@ -244,10 +244,11 @@ vgg11_cifar10_gpool_lay3_exps = exps_channels_and_layers(
     # vgg11_cifar10_gpool, n_channels, layer_idx[-2:-1])
 
 
-######### Not Used #############################
 ## Grid cell net
 grid_2d_conv = dict(
     n_dichotomies = 100, # Number of random dichotomies to test
+    # n_dichotomies = 30, # Number of random dichotomies to test
+    # n_dichotomies = 5, # Number of random dichotomies to test
     n_inputs = 16, # Number of input samples to test
     # n_inputs = 3, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
@@ -267,7 +268,7 @@ grid_2d_conv = dict(
     layer_idx=0,
     # dataset_name = 'imagenet', # Use imagenet inputs.
     dataset_name = 'gaussianrandom', # Use Gaussian random inputs.
-    perceptron_style = 'efficient',
+    # perceptron_style = 'efficient',
     # shift_style = '1d', # Take input 1d shifts (shift in only x dimension).
     shift_style = '2d', # Use input shifts in both x and y dimensions
     shift_x = 1, # Number of pixels by which to shift in the x direction
@@ -283,7 +284,10 @@ grid_2d_conv = dict(
     # center_response = True, # Whether or not to mean center each representation
     center_response = False,  # response 
 )
-alphas = torch.linspace(.5, 3.0, 15)
+# alphas = torch.linspace(.5, 3.0, 15)
+# alphas = torch.linspace(.5, 2.5, 15)
+# alphas = torch.linspace(1, 2.3, 15)
+alphas = torch.linspace(.8, 3.5, 20)
 n_channels = alphas_to_channels(
     alphas, grid_2d_conv['n_inputs'],
     int(grid_2d_conv['fit_intercept']))
@@ -293,6 +297,7 @@ grid_2d_conv_exps=exps_channels_and_layers(grid_2d_conv, n_channels)
 )
 
 
+######### Not Used #############################
 # AlexNet on imagenet
 alexnet_imagenet = dict(
 n_dichotomies = 100, # Number of random dichotomies to test

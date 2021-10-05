@@ -34,6 +34,15 @@ import cnn_capacity_params as cp
 import datasets
 import cnn_capacity_utils as utils
 
+plt.rcParams.update({
+    'axes.labelsize': 'xx-large',
+    'xtick.labelsize': 'x-large',
+    'ytick.labelsize': 'x-large',
+    "text.usetex": True,
+    # "font.family": "serif",
+    # "font.serif": ["Palatino"],
+})
+
 output_dir = 'output'
 fig_dir = 'figs'
 rerun = True # If True, rerun the simulation even if a matching simulation is
@@ -45,7 +54,7 @@ rerun = False
 # n_cores = 20
 # n_cores = 10
 # n_cores = 20
-n_cores = 8
+n_cores = 7
 # n_cores = 5
 # n_cores = 3 # setting to 1 for debugging.
 # seeds = [3, 4, 5, 6, 7]
@@ -267,7 +276,7 @@ def get_capacity(
         # torch.nn.init.normal_(convlayer.weight)
         net = torch.nn.Sequential(
             convlayer,
-            torch.nn.ReLU(),
+            # torch.nn.ReLU(),
             models.MultiplePeriodicAggregate2D(((10, 10), (8, 8))),
         )
         net.eval()
@@ -275,7 +284,7 @@ def get_capacity(
             with torch.no_grad():
                 hlist = net(input)
             hlist = [h.reshape(*h.shape[:2], -1) for h in hlist]
-            h = torch.cat(hlist, dim=-1)
+            h = torch.relu(torch.cat(hlist, dim=-1))
             return h
     elif net_style == 'rand_conv':
         convlayer = torch.nn.Conv2d(img_channels, n_channels,
@@ -401,10 +410,6 @@ def get_capacity(
 
     # test_input, test_label = datasetfull[:2]
     test_input, test_label = next(iter(dataloader))[:2]
-    dl = iter(dataloaderfull)
-    av1 = next(dl)
-    av2 = next(dl)
-    test_input = torch.stack((av1[0], av2[0]), dim=0)
     # plt.figure(); plt.imshow(dataset[100][0].transpose(0,2).transpose(0,1)); plt.show()
     h_test = feature_fn(test_input)
     if h_test.shape[1] < n_channels:
@@ -484,7 +489,6 @@ def get_capacity(
         if batch_size == len(dataset):
             inputs = dataloader[0][0]
             core_idx = dataloader[0][2]
-            hfull = feature_fn(inputsfull)
             h = feature_fn(inputs)
             if perceptron_style == 'efficient' or pool_over_group:
                 if perceptron_style == 'efficient':
@@ -671,15 +675,19 @@ if __name__ == '__main__':
     results_table = pd.DataFrame()
     for seed in seeds:
         for i0, params in enumerate(param_set):
-            print(f"Starting param set {i0}/{len(param_set)} with seed {seed}")
+            print(f"Starting param set {i0+1}/{len(param_set)} with seed {seed}")
             capacity = get_capacity(seed=seed, **params)
             layer = params['layer_idx']
             n_input = params['n_inputs']
             n_channel = params['n_channels']
             net_style = params['net_style']
+            if net_style == 'grid':
+                factor = 2
+            else:
+                factor = 1
             offset = int(params['fit_intercept'])
             pool_over_group = params['pool_over_group']
-            alpha = n_input / (n_channel + offset)
+            alpha = n_input / (factor*n_channel + offset)
             cover_capacity = cover_theorem(n_input, n_channel)
             pool_over_group = params['pool_over_group']
             d1 = {'seed': seed, 'alpha': alpha, 'n_inputs': n_input,
@@ -702,13 +710,13 @@ if __name__ == '__main__':
         style = None
     style = 'pool_over_group'
     os.makedirs('figs', exist_ok=True)
-    results_table.to_pickle('figs/most_recent.pkl')
     alpha_table = results_table.drop(
         columns=['n_channels', 'n_inputs', 'n_channels_offset',
                  'fit_intercept'])
     fig, ax = plt.subplots(figsize=(5,4))
-    sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
+    g = sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  hue='layer', style=style)
+    g.legend_.remove()
     # sns.boxplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
                  # hue=style)
     # sns.lineplot(ax=ax, x='alpha', y='capacity', data=alpha_table,
@@ -719,16 +727,29 @@ if __name__ == '__main__':
     pmax = results_table['n_inputs'].max()
     alphamin = results_table['alpha'].min()
     alphamax = results_table['alpha'].max()
-    cover_cap = {p/n: cover_theorem(p, n) for n in range(nmin, nmax+1)
-                for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
+    if net_style == 'grid':
+        factor = 2
+    else:
+        factor = 1
+    cover_cap = {p/(factor*n): cover_theorem(p, factor*n) for n in range(nmin, nmax+1)
+                for p in range(pmin, pmax+1) if alphamin <= p/(factor*n) <= alphamax}
     cover_cap_maxpool = {p/n: cover_theorem(2*p, n) for n in range(nmin, nmax+1)
                 for p in range(pmin, pmax+1) if alphamin <= p/n <= alphamax}
     ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='dotted',
            color='blue', label='theory')
     # ax.plot(list(cover_cap_maxpool.keys()), list(cover_cap_maxpool.values()), linestyle='dotted',
            # color='red', label='theory maxpool')
-    ax.legend()
+    # ax.legend()
+    P = param_set[0]['n_inputs']
+    # ax.set_xlabel('\alpha = ' + f'{P}' + '/(channels)')
+    if param_set[0]['net_style'] == 'grid':
+        # ax.set_xlabel(r'$\alpha = $' + f'{P}' + r'/(2(\# channels))')
+        ax.set_xlabel(r'$\alpha = P/N_0$')
+    else:
+        # ax.set_xlabel(r'$\alpha = $' + f'{P}' + r'/(\# channels)')
+        ax.set_xlabel(r'$\alpha = P/N_0$')
     ax.set_ylim([-.01, 1.01])
     figname = '__'.join(param_set_names)
     fig.savefig(f'figs/{figname}.pdf', bbox_inches='tight')
+    results_table.to_pickle(f'figs/{figname}.pkl')
 
