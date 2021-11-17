@@ -38,9 +38,6 @@ rerun = True # If True, rerun the simulation even if a matching simulation is
 n_cores = 5
 seeds = [3, 4, 5]
 
-## Collect parameter sets in a list of dictionaries so that simulations can be
-## automatically saved and loaded based on the values in the dictionaries.
-
 
 def cover_theorem(P, N):
     frac_dich = 0
@@ -115,6 +112,7 @@ def make_plot(param_set_names):
     ax.plot(list(cover_cap.keys()), list(cover_cap.values()), linestyle='dotted',
            color='blue', label='theory')
     P = param_set[0]['n_inputs']
+    ax.set_xlabel(r'$f(\alpha)$')
     if param_set[0]['net_style'] == 'grid':
        ax.set_xlabel(r'$\alpha = P/N_0$')
     else:
@@ -125,7 +123,7 @@ def make_plot(param_set_names):
     results_table.to_pickle(f'figs/{figname}.pkl')
 
 
-## Run script by calling get_capacity 
+## Run script
 if __name__ == '__main__':
 
     # Figure 2a
