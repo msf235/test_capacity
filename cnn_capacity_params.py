@@ -32,7 +32,7 @@ param_sets = {}
 
 ## One-dimensional random CNN layer.
 random_1d_conv = dict(
-    n_dichotomies = 100, # Number of random dichotomies to test
+    n_dichotomies = 2, # Number of random dichotomies to test
     n_inputs = 40, # Number of input samples to test
     max_epochs = 4000, # Maximum number of epochs.
     batch_size = None, # Batch size if training with SGD
@@ -131,7 +131,7 @@ random_2d_conv_shift2_exps = exps_channels_and_layers(
 
 ## VGG11 on CIFAR10
 vgg11_cifar10 = dict(
-    n_dichotomies = 100, # Number of random dichotomies to test
+    n_dichotomies = 2, # Number of random dichotomies to test
     n_inputs = 20, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
     batch_size = None, # Batch size if training with SGD.
@@ -189,7 +189,7 @@ vgg11_cifar10_gpool_exps = exps_channels_and_layers(
 
 ## Grid cell net
 grid_2d_conv = dict(
-    n_dichotomies = 100, # Number of random dichotomies to test
+    n_dichotomies = 2, # Number of random dichotomies to test
     n_inputs = 16, # Number of input samples to test
     max_epochs = 500, # Maximum number of epochs.
     batch_size=None,
